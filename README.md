@@ -20,21 +20,21 @@ Two requirements:
 
 ```csharp
 using StrongId.Attributes;
-using StrongId.Base;
 
 [StrongIdPrefix("cart")]
-public partial class ShoppingCartId : StrongIdBase<ShoppingCartId>;
+public partial class ShoppingCartId;
 
 [StrongIdPrefix("list")]
-public partial class ShoppingListId : StrongIdBase<ShoppingListId>;
+public partial class ShoppingListId;
 ```
 
 The source generator emits a second partial for each id with:
+- the `: StrongIdBase<TSelf>` base class — so the user-written declaration stays a one-liner with no generic self-reference;
 - a **private parameterless constructor** — `new ShoppingCartId()` is a compile error externally, forcing all construction through factory methods;
 - the `IStrongIdFactory<TSelf>` static-abstract-interface implementation — used internally by `StrongIdBase<T>` to construct instances without needing a `new()` constraint;
 - `[JsonConverter(typeof(StrongIdJsonConverter))]` — `System.Text.Json` serializes ids as flat strings, no `JsonSerializerOptions` setup needed at the call site.
 
-The generator runs only on `partial` classes that inherit (directly or transitively) from `StrongIdBase<T>`. Non-partial declarations are ignored.
+The generator runs on `partial` classes carrying `[StrongIdPrefix]`. Classes that already inherit from `StrongIdBase<T>` directly are also picked up for backwards compatibility. Non-partial declarations are ignored.
 
 ## Wiring the generator into a consumer project
 

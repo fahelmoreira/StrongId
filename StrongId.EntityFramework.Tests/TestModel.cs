@@ -1,18 +1,17 @@
 using Microsoft.EntityFrameworkCore;
 using StrongId.Attributes;
-using StrongId.Base;
 using StrongId.EntityFramework.Extension;
 
 namespace StrongId.EntityFramework.Tests;
 
 [StrongIdPrefix("prod")]
-public partial class ProductId : StrongIdBase<ProductId>;
+public partial class ProductId;
 
 [StrongIdPrefix("cust")]
-public partial class CustomerId : StrongIdBase<CustomerId>;
+public partial class CustomerId;
 
 [StrongIdPrefix("tag")]
-public partial class TagId : StrongIdBase<TagId>;
+public partial class TagId;
 
 public class Product
 {
