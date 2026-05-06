@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>net10.0;netstandard2.0</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <IsRoslynComponent Condition="'$(TargetFramework)' == 'netstandard2.0'">true</IsRoslynComponent>
+        <EnforceExtendedAnalyzerRules Condition="'$(TargetFramework)' == 'netstandard2.0'">true</EnforceExtendedAnalyzerRules>
+        <Company>Kota</Company>
+        <AssemblyVersion>1.0.0</AssemblyVersion>
+        <FileVersion>1.0.0</FileVersion>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" PrivateAssets="all" />
+    </ItemGroup>
+
+    <!-- netstandard2.0 build only contains the source generator -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+        <Compile Remove="Base/**" />
+        <Compile Remove="Interfaces/**" />
+        <Compile Remove="Attributes/**" />
+        <Compile Remove="Converters/**" />
+    </ItemGroup>
+
+    <!-- net10.0 build does not contain the source generator -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+        <Compile Remove="SourceGenerators/**" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="StrongId.EntityFramework" />
+    </ItemGroup>
+
+</Project>
