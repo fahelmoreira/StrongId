@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 using StrongId.Attributes;
 using StrongId.Interfaces;
 
-namespace Kota.StrongId.Base;
+namespace StrongId.Base;
 
 /// <summary>
 /// Represents a base class for strongly-typed identifiers with an internal prefix and GUID-based value.

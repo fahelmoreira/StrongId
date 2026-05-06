@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\StrongId\StrongId.csproj" />
+        <ProjectReference Include="..\StrongId.EntityFramework\StrongId.EntityFramework.csproj" />
+        <ProjectReference Include="..\StrongId\StrongId.csproj"
+                          OutputItemType="Analyzer"
+                          ReferenceOutputAssembly="false"
+                          SetTargetFramework="TargetFramework=netstandard2.0" />
+    </ItemGroup>
+
+</Project>
