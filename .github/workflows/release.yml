@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Derive version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version $VERSION"
+
+      - name: Restore
+        run: dotnet restore StrongId.slnx
+
+      - name: Build
+        run: dotnet build StrongId.slnx -c Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test StrongId.slnx -c Release --no-build --verbosity normal
+
+      - name: Pack StrongId
+        run: |
+          dotnet pack StrongId/StrongId.csproj \
+            -c Release \
+            --no-build \
+            -o nupkgs \
+            -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Pack StrongId.EntityFramework
+        run: |
+          dotnet pack StrongId.EntityFramework/StrongId.EntityFramework.csproj \
+            -c Release \
+            --no-build \
+            -o nupkgs \
+            -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Push to NuGet
+        run: |
+          dotnet nuget push "nupkgs/StrongId.${{ steps.version.outputs.version }}.nupkg" \
+            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+          dotnet nuget push "nupkgs/StrongId.EntityFramework.${{ steps.version.outputs.version }}.nupkg" \
+            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            nupkgs/StrongId.${{ steps.version.outputs.version }}.nupkg
+            nupkgs/StrongId.${{ steps.version.outputs.version }}.snupkg
+            nupkgs/StrongId.EntityFramework.${{ steps.version.outputs.version }}.nupkg
+            nupkgs/StrongId.EntityFramework.${{ steps.version.outputs.version }}.snupkg
