@@ -7,10 +7,45 @@
         <LangVersion>latest</LangVersion>
         <IsRoslynComponent Condition="'$(TargetFramework)' == 'netstandard2.0'">true</IsRoslynComponent>
         <EnforceExtendedAnalyzerRules Condition="'$(TargetFramework)' == 'netstandard2.0'">true</EnforceExtendedAnalyzerRules>
+
+        <!-- NuGet metadata -->
+        <PackageId>StrongId</PackageId>
+        <Version>1.0.0</Version>
+        <Authors>Rafael Moreira</Authors>
         <Company>Kota</Company>
         <AssemblyVersion>1.0.0</AssemblyVersion>
         <FileVersion>1.0.0</FileVersion>
+        <Description>Strongly-typed, prefixed identifiers for .NET (UUID v7) with a Roslyn source generator that emits the JSON converter, factory, and a private constructor on each id type.</Description>
+        <PackageTags>strong-id;identifier;uuid;uuid7;source-generator;roslyn</PackageTags>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <RepositoryUrl>https://github.com/fahelmoreira/StrongId</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+        <!-- Don't ship the netstandard2.0 build under lib/ — it ships under analyzers/ instead -->
+        <IncludeBuildOutput Condition="'$(TargetFramework)' == 'netstandard2.0'">false</IncludeBuildOutput>
+        <SuppressDependenciesWhenPacking Condition="'$(TargetFramework)' == 'netstandard2.0'">true</SuppressDependenciesWhenPacking>
+        <DevelopmentDependency Condition="'$(TargetFramework)' == 'netstandard2.0'">true</DevelopmentDependency>
     </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="../README.md" Pack="true" PackagePath="\" />
+        <None Include="../LICENSE" Pack="true" PackagePath="\" />
+    </ItemGroup>
+
+    <!-- Ship the source generator dll under analyzers/dotnet/cs/ -->
+    <PropertyGroup>
+        <TargetsForTfmSpecificContentInPackage Condition="'$(TargetFramework)' == 'netstandard2.0'">$(TargetsForTfmSpecificContentInPackage);_AddAnalyzerToPackage</TargetsForTfmSpecificContentInPackage>
+    </PropertyGroup>
+
+    <Target Name="_AddAnalyzerToPackage">
+        <ItemGroup>
+            <TfmSpecificPackageFile Include="$(OutputPath)$(AssemblyName).dll" PackagePath="analyzers/dotnet/cs" />
+        </ItemGroup>
+    </Target>
 
     <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" PrivateAssets="all" />

@@ -4,16 +4,36 @@
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+
+        <!-- NuGet metadata -->
+        <PackageId>StrongId.EntityFramework</PackageId>
+        <Version>1.0.0</Version>
+        <Authors>Rafael Moreira</Authors>
         <Company>Kota</Company>
         <AssemblyVersion>1.0.0</AssemblyVersion>
         <FileVersion>1.0.0</FileVersion>
+        <Description>Entity Framework Core value converters and PropertyBuilder extensions for StrongId.</Description>
+        <PackageTags>strong-id;ef-core;entity-framework;value-converter</PackageTags>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <RepositoryUrl>https://github.com/fahelmoreira/StrongId</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="../README.md" Pack="true" PackagePath="\" />
+        <None Include="../LICENSE" Pack="true" PackagePath="\" />
+    </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.7" />
     </ItemGroup>
 
     <ItemGroup>
+      <!-- This becomes a NuGet dependency on StrongId in the produced .nupkg -->
       <ProjectReference Include="..\StrongId\StrongId.csproj" />
     </ItemGroup>
 
