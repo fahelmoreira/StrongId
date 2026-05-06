@@ -9,7 +9,7 @@
         <EnforceExtendedAnalyzerRules Condition="'$(TargetFramework)' == 'netstandard2.0'">true</EnforceExtendedAnalyzerRules>
 
         <!-- NuGet metadata -->
-        <PackageId>StrongId</PackageId>
+        <PackageId>fahelmoreira.StrongId</PackageId>
         <Version>1.0.0</Version>
         <Authors>Rafael Moreira</Authors>
         <Company>Kota</Company>

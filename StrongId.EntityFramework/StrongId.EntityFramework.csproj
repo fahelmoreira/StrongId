@@ -6,7 +6,7 @@
         <Nullable>enable</Nullable>
 
         <!-- NuGet metadata -->
-        <PackageId>StrongId.EntityFramework</PackageId>
+        <PackageId>fahelmoreira.StrongId.EntityFramework</PackageId>
         <Version>1.0.0</Version>
         <Authors>Rafael Moreira</Authors>
         <Company>Kota</Company>
