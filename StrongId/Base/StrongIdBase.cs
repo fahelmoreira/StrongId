@@ -3,9 +3,16 @@ using System.ComponentModel.DataAnnotations;
 using StrongId.Attributes;
 using StrongId.Interfaces;
 
-namespace StrongId.Base;
+namespace Kota.StrongId.Base;
 
-public class StrongIdBase<T> : StrongId, IValidatableObject,IEquatable<T>  where T : IStrongId, IStrongIdFactory<T>
+/// <summary>
+/// Represents a base class for strongly-typed identifiers with an internal prefix and GUID-based value.
+/// </summary>
+/// <typeparam name="T">
+/// The type that extends the <see cref="StrongIdBase{T}"/> class. Must implement the
+/// <see cref="IStrongId"/> and <see cref="IStrongIdFactory{T}"/> interfaces.
+/// </typeparam>
+public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  where T : IStrongId, IStrongIdFactory<T>
 {
     public static string Prefix
     {
@@ -24,6 +31,13 @@ public class StrongIdBase<T> : StrongId, IValidatableObject,IEquatable<T>  where
             ? "_empty"
             : $"{((StrongIdPrefixAttribute?) Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute)))!.Prefix}_empty");
 
+    /// <summary>
+    /// Creates a new instance of the StrongIdBase using a prefix and a generated UUID.
+    /// </summary>
+    /// <returns>A new instance of the StrongIdBase with a generated unique identifier.</returns>
+    /// <exception cref="MissingFieldException">
+    /// Thrown when the prefix attribute is missing for the given type.
+    /// </exception>
     public static T Create()
     {
         var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
@@ -71,6 +85,11 @@ public class StrongIdBase<T> : StrongId, IValidatableObject,IEquatable<T>  where
         return T.NewInstance(value);
     }
 
+    /// <summary>
+    /// Creates a new instance of the StrongIdBase from a GUID.
+    /// </summary>
+    /// <param name="uuid">The GUID value used to create the StrongIdBase instance.</param>
+    /// <returns>A new instance of the StrongIdBase class of type <typeparamref name="T"/>.</returns>
     internal static T FromUuid(Guid uuid)
     {
         return T.NewInstance($"{Prefix}_{uuid:N}");
@@ -95,7 +114,12 @@ public class StrongIdBase<T> : StrongId, IValidatableObject,IEquatable<T>  where
             return false;
         }
     }
-    
+
+    /// <summary>
+    /// Validates the current instance to ensure the prefix in its value matches the required prefix.
+    /// </summary>
+    /// <param name="validationContext">Provides the context for validation, including information about the object being validated.</param>
+    /// <returns>A collection of <see cref="ValidationResult"/> indicating validation errors, if any.</returns>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         var prefix = Value.Split("_")[0];
@@ -152,6 +176,14 @@ public class StrongIdBase<T> : StrongId, IValidatableObject,IEquatable<T>  where
     }
 }
 
+/// <summary>
+/// Represents a strongly-typed identifier with a string-based value and a UUID-derived component.
+/// Implements the <see cref="IStrongId"/> interface to support type conversion and strongly-typed identity functionality.
+/// </summary>
+/// <remarks>
+/// The identifier value is expected to follow a specific format that includes a prefix and an underlying GUID component,
+/// allowing for efficient parsing and validation of UUID-based identifiers.
+/// </remarks>
 public class StrongId : TypeConverter, IStrongId
 {
     
