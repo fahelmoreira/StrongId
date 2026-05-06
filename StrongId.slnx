@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Demo/Demo.csproj" />
+  <Project Path="StrongId.EntityFramework/StrongId.EntityFramework.csproj" />
+  <Project Path="StrongId/StrongId.csproj" />
+  <Project Path="StrongId.Tests/StrongId.Tests.csproj" />
+  <Project Path="StrongId.EntityFramework.Tests/StrongId.EntityFramework.Tests.csproj" />
+</Solution>
