@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using StrongId.Attributes;
+using StrongId.Configuration;
 using StrongId.Interfaces;
 
 namespace StrongId.Base;
@@ -21,6 +22,16 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
 
             return prefixAttribute is null ? throw new MissingFieldException("Prefix attribute is missing") : prefixAttribute.Prefix;
+        }
+    }
+    
+    private static IdType StrongIdType 
+    {
+        get
+        {
+            var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+
+            return prefixAttribute is null || prefixAttribute.IdType is IdType.Default ? StrongIdConfiguration.ConfigureOptions.IdType : prefixAttribute.IdType;
         }
     }
 
@@ -47,9 +58,16 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             throw new MissingFieldException("Prefix attribute is missing");
         }
 
-        var guid = $"{Guid.CreateVersion7():N}";
 
-        return T.NewInstance($"{prefixAttribute.Prefix}_{guid}");
+        var value = StrongIdType switch
+        {
+            IdType.Uuid7 => $"{Guid.CreateVersion7():N}",
+            IdType.Uuid4 => $"{Guid.NewGuid():N}",
+            IdType.Int => throw new NotSupportedException("Int type is not supported for automatic generation"),
+            IdType.SequenceString => throw new NotImplementedException("SequenceString type is not implemented for automatic generation"),
+        };
+
+        return T.NewInstance($"{prefixAttribute.Prefix}_{value}");
     }
     
     /// <summary>
@@ -63,6 +81,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     {
         var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
         
+        
         if(prefixAttribute is null)
         {
             throw new MissingFieldException($"Prefix attribute is missing for {typeof(T).Name}");
@@ -75,14 +94,19 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             throw new InvalidCastException($"The Prefix {(string.IsNullOrEmpty(prefix) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
         }
 
-        var hex = value.Split("_")[1];
-        
-        if(!Guid.TryParseExact(hex, "N", out var _))
+        if (StrongIdType is IdType.Uuid7 or IdType.Uuid4)
         {
-            throw new InvalidCastException($"The hex {(string.IsNullOrEmpty(hex) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
+            var hex = value.Split("_")[1];
+            
+            if(!Guid.TryParseExact(hex, "N", out var _))
+            {
+                throw new InvalidCastException($"The hex {(string.IsNullOrEmpty(hex) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
+            }
+            
+            return T.NewInstance(value);
         }
         
-        return T.NewInstance(value);
+        throw new InvalidCastException($"The value {value} is invalid for {typeof(T).Name}");
     }
 
     /// <summary>
@@ -308,4 +332,5 @@ public class StrongId : TypeConverter, IStrongId
     {
         throw new NotSupportedException();
     }
+    
 }
