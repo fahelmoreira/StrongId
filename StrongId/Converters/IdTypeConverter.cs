@@ -44,12 +44,12 @@ public class IdTypeConverter<T> : TypeConverter
 
         if (destinationType == typeof(string) && value is T idForString)
         {
-            return ((Base.StrongId)(object)idForString).Value;
+            return idForString.Value;
         }
 
         if (destinationType == typeof(Guid) && value is T idForGuid)
         {
-            return ((Base.StrongId)(object)idForGuid).Uuid;
+            return idForGuid.Uuid;
         }
 
         return base.ConvertTo(context, culture, value, destinationType);
