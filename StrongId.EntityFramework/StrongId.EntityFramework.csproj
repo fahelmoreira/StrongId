@@ -15,6 +15,7 @@
         <Description>Entity Framework Core value converters and PropertyBuilder extensions for StrongId.</Description>
         <PackageTags>strong-id;ef-core;entity-framework;value-converter</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageIcon>strong-id-icon.jpg</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryUrl>https://github.com/fahelmoreira/StrongId</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
@@ -27,6 +28,7 @@
     <ItemGroup>
         <None Include="../README.md" Pack="true" PackagePath="\" />
         <None Include="../LICENSE" Pack="true" PackagePath="\" />
+        <None Include="../Assets/strong-id-icon.jpg" Pack="true" PackagePath="\" />
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework)' == 'net7.0'">

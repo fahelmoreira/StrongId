@@ -18,6 +18,7 @@
         <Description>Strongly-typed, prefixed identifiers for .NET (UUID v7) with a Roslyn source generator that emits the JSON converter, factory, and a private constructor on each id type.</Description>
         <PackageTags>strong-id;identifier;uuid;uuid7;source-generator;roslyn</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageIcon>strong-id-icon.jpg</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryUrl>https://github.com/fahelmoreira/StrongId</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
@@ -34,6 +35,7 @@
     <ItemGroup>
         <None Include="../README.md" Pack="true" PackagePath="\" />
         <None Include="../LICENSE" Pack="true" PackagePath="\" />
+        <None Include="../Assets/strong-id-icon.jpg" Pack="true" PackagePath="\" />
     </ItemGroup>
 
     <!-- Ship the source generator dll under analyzers/dotnet/cs/ -->
