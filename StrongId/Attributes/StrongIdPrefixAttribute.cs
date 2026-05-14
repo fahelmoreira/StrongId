@@ -18,4 +18,5 @@ public class StrongIdPrefixAttribute(string prefix, IdScheme scheme = default, S
         StorageFormat.Default => StrongIdDefaults.Options.StorageFormat,
         _ => storage
     };
+    
 }

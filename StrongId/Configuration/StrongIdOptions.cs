@@ -7,4 +7,6 @@ public class StrongIdOptions
 {
     public IdScheme IdScheme { get; set; } = IdScheme.Uuid7;
     public StorageFormat StorageFormat { get; set; } = StorageFormat.Native;
+    public bool IgnoreSuffixValidation { get; set; } = false;
+
 }
