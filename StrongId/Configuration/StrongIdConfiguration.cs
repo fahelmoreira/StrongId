@@ -16,6 +16,11 @@ public static class StrongIdConfiguration
             IdType.Default => DefaultIdType,
             _ => ConfigureOptions.IdType
         };
+        ConfigureOptions.StoreType = ConfigureOptions.StoreType switch
+        {
+            StoreType.Default => StoreType.NativeType,
+            _ => ConfigureOptions.StoreType
+        };
     }
 }
 
@@ -28,7 +33,15 @@ public enum IdType
     SequenceString
 }
 
+public enum StoreType
+{
+    Default,
+    String,
+    NativeType
+}
+
 public class StrongIdOptions
 {
     public IdType IdType { get; set; } = IdType.Uuid7;
+    public StoreType  StoreType { get; set; } = StoreType.NativeType; 
 }

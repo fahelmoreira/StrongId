@@ -26,13 +26,27 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
         }
     }
     
-    private static IdType StrongIdType 
+    private static IdType StrongIdType
     {
         get
         {
             var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
 
             return prefixAttribute is null || prefixAttribute.IdType is IdType.Default ? StrongIdConfiguration.ConfigureOptions.IdType : prefixAttribute.IdType;
+        }
+    }
+
+    internal static IdType ResolvedIdType => StrongIdType;
+
+    internal static StoreType ResolvedStoreType
+    {
+        get
+        {
+            var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+
+            return prefixAttribute is null || prefixAttribute.StoreType is StoreType.Default
+                ? StrongIdConfiguration.ConfigureOptions.StoreType
+                : prefixAttribute.StoreType;
         }
     }
 
