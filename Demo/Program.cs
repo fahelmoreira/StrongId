@@ -5,14 +5,14 @@ using Microsoft.EntityFrameworkCore;
 using StrongId.Configuration;
 
 // ──────────────────────────────────────────────────────────────────
-// 1. Global configuration — sets the *default* IdType for any
-//    [StrongIdPrefix] that doesn't specify one. Attribute values
-//    still override this (see ProductId / CustomerId below).
+// 1. Global defaults — applied to any [StrongIdPrefix] that doesn't
+//    specify an IdScheme. Attribute values still override this
+//    (see ProductId / CustomerId below).
 // ──────────────────────────────────────────────────────────────────
-StrongIdConfiguration.Configure(c =>
+StrongIdDefaults.Configure(c =>
 {
-    c.IdType = IdType.Uuid7;        // applies to ShoppingListId
-    c.StoreType = StoreType.NativeType;      // EF picks Guid vs string per IdType
+    c.IdScheme = IdScheme.Uuid7;             // applies to ShoppingListId
+    c.StorageFormat = StorageFormat.Native;  // EF picks Guid vs string per IdScheme
 });
 
 // ──────────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ var listId  = ShoppingListId.Create();   // resolves to SequenceString via the g
 var prodId  = ProductId.Create();        // Uuid7 — hex
 var custId  = CustomerId.Create();       // Uuid4 — hex
 var cartId  = ShoppingCartId.Create();   // SequenceString — Crockford base32
-var orderId = OrderId.Create();          // Uuid7 + StoreType.String
+var orderId = OrderId.Create();          // Uuid7 + StorageFormat.String
 
 Console.WriteLine("── Id generation ──");
 PrintId("ShoppingListId  (global default)", listId.Value);
@@ -66,7 +66,7 @@ Console.WriteLine($"TryParse rubbish: {ShoppingCartId.TryParse("cart_not-valid",
 
 // ──────────────────────────────────────────────────────────────────
 // 6. EF Core + HasAutoConversion — picks UUID or string storage
-//    automatically based on each id's IdType / StoreType.
+//    automatically based on each id's IdScheme / StorageFormat.
 // ──────────────────────────────────────────────────────────────────
 Console.WriteLine("\n── EF Core auto-conversion (SQLite in-memory) ──");
 

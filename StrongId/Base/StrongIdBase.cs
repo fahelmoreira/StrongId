@@ -26,27 +26,27 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
         }
     }
     
-    private static IdType StrongIdType
+    internal static IdScheme ResolvedIdScheme
     {
         get
         {
             var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
 
-            return prefixAttribute is null || prefixAttribute.IdType is IdType.Default ? StrongIdConfiguration.ConfigureOptions.IdType : prefixAttribute.IdType;
+            return prefixAttribute is null || prefixAttribute.IdScheme is IdScheme.Default
+                ? StrongIdDefaults.Options.IdScheme
+                : prefixAttribute.IdScheme;
         }
     }
 
-    internal static IdType ResolvedIdType => StrongIdType;
-
-    internal static StoreType ResolvedStoreType
+    internal static StorageFormat ResolvedStorageFormat
     {
         get
         {
             var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
 
-            return prefixAttribute is null || prefixAttribute.StoreType is StoreType.Default
-                ? StrongIdConfiguration.ConfigureOptions.StoreType
-                : prefixAttribute.StoreType;
+            return prefixAttribute is null || prefixAttribute.StorageFormat is StorageFormat.Default
+                ? StrongIdDefaults.Options.StorageFormat
+                : prefixAttribute.StorageFormat;
         }
     }
 
@@ -74,12 +74,13 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
         }
 
 
-        var value = StrongIdType switch
+        var value = ResolvedIdScheme switch
         {
-            IdType.Uuid7 => $"{Guid.CreateVersion7():N}",
-            IdType.Uuid4 => $"{Guid.NewGuid():N}",
-            IdType.Int => throw new NotSupportedException("Int type is not supported for automatic generation"),
-            IdType.SequenceString => SequenceStringGenerator.Create(),
+            IdScheme.Uuid7 => $"{Guid.CreateVersion7():N}",
+            IdScheme.Uuid4 => $"{Guid.NewGuid():N}",
+            IdScheme.Int => throw new NotSupportedException("Int scheme is not supported for automatic generation"),
+            IdScheme.SequenceString => SequenceStringGenerator.Create(),
+            _ => throw new NotSupportedException($"IdScheme '{ResolvedIdScheme}' is not supported.")
         };
 
         return T.NewInstance($"{prefixAttribute.Prefix}_{value}");
@@ -109,7 +110,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             throw new InvalidCastException($"The Prefix {(string.IsNullOrEmpty(prefix) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
         }
 
-        if (StrongIdType is IdType.Uuid7 or IdType.Uuid4)
+        if (ResolvedIdScheme is IdScheme.Uuid7 or IdScheme.Uuid4)
         {
             var hex = value.Split("_")[1];
 
@@ -121,7 +122,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             return T.NewInstance(value);
         }
 
-        if (StrongIdType is IdType.SequenceString)
+        if (ResolvedIdScheme is IdScheme.SequenceString)
         {
             var suffix = value.Split("_")[1];
 

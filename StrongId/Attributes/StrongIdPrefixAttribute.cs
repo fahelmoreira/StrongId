@@ -3,15 +3,19 @@ using StrongId.Configuration;
 namespace StrongId.Attributes;
 
 [AttributeUsage(AttributeTargets.Class)]
-public class StrongIdPrefixAttribute(string prefix, IdType type = default, StoreType store = default) : Attribute
+public class StrongIdPrefixAttribute(string prefix, IdScheme scheme = default, StorageFormat storage = default) : Attribute
 {
     public string Prefix { get; } = prefix;
-    public IdType IdType { get; } = type switch{
-        IdType.Default => StrongIdConfiguration.ConfigureOptions.IdType,
-        _ => type
+
+    public IdScheme IdScheme { get; } = scheme switch
+    {
+        IdScheme.Default => StrongIdDefaults.Options.IdScheme,
+        _ => scheme
     };
-    public StoreType StoreType { get; } = store switch{
-        StoreType.Default => StrongIdConfiguration.ConfigureOptions.StoreType,
-        _ => store
+
+    public StorageFormat StorageFormat { get; } = storage switch
+    {
+        StorageFormat.Default => StrongIdDefaults.Options.StorageFormat,
+        _ => storage
     };
 }

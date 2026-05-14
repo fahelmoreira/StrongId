@@ -70,7 +70,7 @@ public class AutoConversionTests(SqliteFixture fixture)
         cmd.CommandText = "SELECT \"Id\" FROM \"AutoForcedStrings\" WHERE \"Name\" = 'uuid-forced-string' LIMIT 1";
         var stored = (string)(await cmd.ExecuteScalarAsync())!;
 
-        // Even though IdType is Uuid7, StoreType.String forces the prefixed string format.
+        // Even though IdScheme is Uuid7, StorageFormat.String forces the prefixed string format.
         stored.ShouldBe(id.Value);
         stored.ShouldStartWith("ax_");
 

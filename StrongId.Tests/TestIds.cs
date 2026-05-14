@@ -10,7 +10,7 @@ public partial class UserId;
 [StrongIdPrefix("order")]
 public partial class OrderId;
 
-[StrongIdPrefix("cart", IdType.SequenceString)]
+[StrongIdPrefix("cart", IdScheme.SequenceString)]
 public partial class CartId;
 
 public partial class NoPrefixId : StrongIdBase<NoPrefixId>;

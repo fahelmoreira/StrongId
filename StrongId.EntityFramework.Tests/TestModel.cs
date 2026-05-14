@@ -14,16 +14,16 @@ public partial class CustomerId;
 [StrongIdPrefix("tag")]
 public partial class TagId;
 
-// Default IdType (Uuid7) + default StoreType (NativeType) → auto picks UUID converter.
+// Default IdScheme (Uuid7) + default StorageFormat (Native) → auto picks UUID converter.
 [StrongIdPrefix("au")]
 public partial class AutoUuidId;
 
-// SequenceString + NativeType → auto picks string converter.
-[StrongIdPrefix("as", IdType.SequenceString)]
+// SequenceString + Native → auto picks string converter.
+[StrongIdPrefix("as", IdScheme.SequenceString)]
 public partial class AutoSeqId;
 
-// Uuid7 but explicit StoreType.String → auto picks string converter (attribute overrides native).
-[StrongIdPrefix("ax", IdType.Uuid7, StoreType.String)]
+// Uuid7 but explicit StorageFormat.String → auto picks string converter (attribute overrides native).
+[StrongIdPrefix("ax", IdScheme.Uuid7, StorageFormat.String)]
 public partial class AutoForcedStringId;
 
 public class Product
