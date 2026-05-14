@@ -2,6 +2,7 @@
 using System.ComponentModel.DataAnnotations;
 using StrongId.Attributes;
 using StrongId.Configuration;
+using StrongId.Generators;
 using StrongId.Interfaces;
 
 namespace StrongId.Base;
@@ -64,7 +65,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             IdType.Uuid7 => $"{Guid.CreateVersion7():N}",
             IdType.Uuid4 => $"{Guid.NewGuid():N}",
             IdType.Int => throw new NotSupportedException("Int type is not supported for automatic generation"),
-            IdType.SequenceString => throw new NotImplementedException("SequenceString type is not implemented for automatic generation"),
+            IdType.SequenceString => SequenceStringGenerator.Create(),
         };
 
         return T.NewInstance($"{prefixAttribute.Prefix}_{value}");
@@ -97,15 +98,27 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
         if (StrongIdType is IdType.Uuid7 or IdType.Uuid4)
         {
             var hex = value.Split("_")[1];
-            
+
             if(!Guid.TryParseExact(hex, "N", out var _))
             {
                 throw new InvalidCastException($"The hex {(string.IsNullOrEmpty(hex) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
             }
-            
+
             return T.NewInstance(value);
         }
-        
+
+        if (StrongIdType is IdType.SequenceString)
+        {
+            var suffix = value.Split("_")[1];
+
+            if (!SequenceStringGenerator.IsValid(suffix))
+            {
+                throw new InvalidCastException($"The suffix {(string.IsNullOrEmpty(suffix) ? "empty" : suffix)} is invalid for {typeof(T).Name}");
+            }
+
+            return T.NewInstance(value);
+        }
+
         throw new InvalidCastException($"The value {value} is invalid for {typeof(T).Name}");
     }
 
