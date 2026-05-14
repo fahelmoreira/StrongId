@@ -1,5 +1,5 @@
 
-![StrongId Logo](https://raw.githubusercontent.com/fahelmoreira/StrongId/refs/heads/main/Assets/stronId-logo.png)
+![StrongId Logo](https://raw.githubusercontent.com/fahelmoreira/StrongId/refs/heads/Readme-update/Assets/stronId-logo.png)
 
 
 # StrongId
