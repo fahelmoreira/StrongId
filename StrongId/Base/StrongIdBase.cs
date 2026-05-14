@@ -1,6 +1,8 @@
 ﻿using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using StrongId.Attributes;
+using StrongId.Configuration;
+using StrongId.Generators;
 using StrongId.Interfaces;
 
 namespace StrongId.Base;
@@ -21,6 +23,30 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
 
             return prefixAttribute is null ? throw new MissingFieldException("Prefix attribute is missing") : prefixAttribute.Prefix;
+        }
+    }
+    
+    internal static IdScheme ResolvedIdScheme
+    {
+        get
+        {
+            var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+
+            return prefixAttribute is null || prefixAttribute.IdScheme is IdScheme.Default
+                ? StrongIdDefaults.Options.IdScheme
+                : prefixAttribute.IdScheme;
+        }
+    }
+
+    internal static StorageFormat ResolvedStorageFormat
+    {
+        get
+        {
+            var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+
+            return prefixAttribute is null || prefixAttribute.StorageFormat is StorageFormat.Default
+                ? StrongIdDefaults.Options.StorageFormat
+                : prefixAttribute.StorageFormat;
         }
     }
 
@@ -47,9 +73,17 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             throw new MissingFieldException("Prefix attribute is missing");
         }
 
-        var guid = $"{Guid.CreateVersion7():N}";
 
-        return T.NewInstance($"{prefixAttribute.Prefix}_{guid}");
+        var value = ResolvedIdScheme switch
+        {
+            IdScheme.Uuid7 => $"{Guid.CreateVersion7():N}",
+            IdScheme.Uuid4 => $"{Guid.NewGuid():N}",
+            IdScheme.Int => throw new NotSupportedException("Int scheme is not supported for automatic generation"),
+            IdScheme.SequenceString => SequenceStringGenerator.Create(),
+            _ => throw new NotSupportedException($"IdScheme '{ResolvedIdScheme}' is not supported.")
+        };
+
+        return T.NewInstance($"{prefixAttribute.Prefix}_{value}");
     }
     
     /// <summary>
@@ -63,6 +97,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     {
         var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
         
+        
         if(prefixAttribute is null)
         {
             throw new MissingFieldException($"Prefix attribute is missing for {typeof(T).Name}");
@@ -75,14 +110,31 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             throw new InvalidCastException($"The Prefix {(string.IsNullOrEmpty(prefix) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
         }
 
-        var hex = value.Split("_")[1];
-        
-        if(!Guid.TryParseExact(hex, "N", out var _))
+        if (ResolvedIdScheme is IdScheme.Uuid7 or IdScheme.Uuid4)
         {
-            throw new InvalidCastException($"The hex {(string.IsNullOrEmpty(hex) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
+            var hex = value.Split("_")[1];
+
+            if(!Guid.TryParseExact(hex, "N", out var _))
+            {
+                throw new InvalidCastException($"The hex {(string.IsNullOrEmpty(hex) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
+            }
+
+            return T.NewInstance(value);
         }
-        
-        return T.NewInstance(value);
+
+        if (ResolvedIdScheme is IdScheme.SequenceString)
+        {
+            var suffix = value.Split("_")[1];
+
+            if (!SequenceStringGenerator.IsValid(suffix))
+            {
+                throw new InvalidCastException($"The suffix {(string.IsNullOrEmpty(suffix) ? "empty" : suffix)} is invalid for {typeof(T).Name}");
+            }
+
+            return T.NewInstance(value);
+        }
+
+        throw new InvalidCastException($"The value {value} is invalid for {typeof(T).Name}");
     }
 
     /// <summary>
@@ -308,4 +360,5 @@ public class StrongId : TypeConverter, IStrongId
     {
         throw new NotSupportedException();
     }
+    
 }

@@ -57,6 +57,7 @@
         <Compile Remove="Interfaces/**" />
         <Compile Remove="Attributes/**" />
         <Compile Remove="Converters/**" />
+        <Compile Remove="Generators/**" />
     </ItemGroup>
 
     <!-- net10.0 build does not contain the source generator -->
