@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 using StrongId.Attributes;
 using StrongId.Configuration;
 using StrongId.Generators;
@@ -52,7 +53,37 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
 
     protected StrongIdBase() { }
 
-    public static T Empty => T.NewInstance(
+    private static T NewInstance(string value)
+    {
+#if NET7_0_OR_GREATER
+        return T.NewInstance(value);
+#else
+        var method = typeof(T).GetMethod(
+            "NewInstance",
+            BindingFlags.Public | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(string) },
+            modifiers: null);
+
+        if (method is null)
+        {
+            throw new MissingMethodException(typeof(T).FullName, "NewInstance");
+        }
+
+        return (T)method.Invoke(null, new object[] { value })!;
+#endif
+    }
+
+    private static Guid CreateUuid7()
+    {
+#if NET9_0_OR_GREATER
+        return Guid.CreateVersion7();
+#else
+        return Uuid7Generator.Create();
+#endif
+    }
+
+    public static T Empty => NewInstance(
         (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute)) is null
             ? "_empty"
             : $"{((StrongIdPrefixAttribute?) Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute)))!.Prefix}_empty");
@@ -76,14 +107,14 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
 
         var value = ResolvedIdScheme switch
         {
-            IdScheme.Uuid7 => $"{Guid.CreateVersion7():N}",
+            IdScheme.Uuid7 => $"{CreateUuid7():N}",
             IdScheme.Uuid4 => $"{Guid.NewGuid():N}",
             IdScheme.Int => throw new NotSupportedException("Int scheme is not supported for automatic generation"),
             IdScheme.SequenceString => SequenceStringGenerator.Create(),
             _ => throw new NotSupportedException($"IdScheme '{ResolvedIdScheme}' is not supported.")
         };
 
-        return T.NewInstance($"{prefixAttribute.Prefix}_{value}");
+        return NewInstance($"{prefixAttribute.Prefix}_{value}");
     }
     
     /// <summary>
@@ -119,7 +150,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
                 throw new InvalidCastException($"The hex {(string.IsNullOrEmpty(hex) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
             }
 
-            return T.NewInstance(value);
+            return NewInstance(value);
         }
 
         if (ResolvedIdScheme is IdScheme.SequenceString)
@@ -131,7 +162,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
                 throw new InvalidCastException($"The suffix {(string.IsNullOrEmpty(suffix) ? "empty" : suffix)} is invalid for {typeof(T).Name}");
             }
 
-            return T.NewInstance(value);
+            return NewInstance(value);
         }
 
         throw new InvalidCastException($"The value {value} is invalid for {typeof(T).Name}");
@@ -144,7 +175,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     /// <returns>A new instance of the StrongIdBase class of type <typeparamref name="T"/>.</returns>
     internal static T FromUuid(Guid uuid)
     {
-        return T.NewInstance($"{Prefix}_{uuid:N}");
+        return NewInstance($"{Prefix}_{uuid:N}");
     }
     
     /// <summary>

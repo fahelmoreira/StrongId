@@ -99,7 +99,7 @@ public class StrongIdJsonConverterGenerator : IIncrementalGenerator
         sb.Append("global::StrongId.Interfaces.IStrongIdFactory<").Append(name).AppendLine(">");
         sb.AppendLine("{");
         sb.Append("    private ").Append(name).AppendLine("() { }");
-        sb.Append("    static ").Append(name).Append(" global::StrongId.Interfaces.IStrongIdFactory<").Append(name).Append(">.NewInstance(string value) => new ").Append(name).AppendLine("() { Value = value };");
+        sb.Append("    public static ").Append(name).Append(" NewInstance(string value) => new ").Append(name).AppendLine("() { Value = value };");
         sb.AppendLine("}");
 
         var hint = (ns is null ? name : ns + "." + name) + ".StrongIdCtor.g.cs";

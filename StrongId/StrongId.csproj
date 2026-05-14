@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFrameworks>net10.0;netstandard2.0</TargetFrameworks>
+        <TargetFrameworks>net10.0;netstandard2.0;net8.0;net9.0;netstandard2.1</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
@@ -51,6 +51,12 @@
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" PrivateAssets="all" />
     </ItemGroup>
 
+    <!-- netstandard2.1 needs the System.Text.Json and DataAnnotations packages -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
+        <PackageReference Include="System.Text.Json" Version="8.0.5" />
+        <PackageReference Include="System.ComponentModel.Annotations" Version="5.0.0" />
+    </ItemGroup>
+
     <!-- netstandard2.0 build only contains the source generator -->
     <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
         <Compile Remove="Base/**" />
@@ -58,15 +64,18 @@
         <Compile Remove="Attributes/**" />
         <Compile Remove="Converters/**" />
         <Compile Remove="Generators/**" />
+        <Compile Remove="Configuration/**" />
+        <Compile Remove="Polyfills/**" />
     </ItemGroup>
 
-    <!-- net10.0 build does not contain the source generator -->
-    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <!-- Only the netstandard2.0 build ships the source generator itself -->
+    <ItemGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
         <Compile Remove="SourceGenerators/**" />
     </ItemGroup>
 
     <ItemGroup>
         <InternalsVisibleTo Include="StrongId.EntityFramework" />
+        <InternalsVisibleTo Include="StrongId.Tests" />
     </ItemGroup>
 
 </Project>
