@@ -141,6 +141,11 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             throw new InvalidCastException($"The Prefix {(string.IsNullOrEmpty(prefix) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
         }
 
+        if (StrongIdDefaults.Options.IgnoreSuffixValidation)
+        {
+            return NewInstance(value);
+        }
+
         if (ResolvedIdScheme is IdScheme.Uuid7 or IdScheme.Uuid4)
         {
             var hex = value.Split("_")[1];
