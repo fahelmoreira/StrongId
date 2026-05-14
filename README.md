@@ -1,10 +1,22 @@
 
-![StrongId Logo](https://raw.githubusercontent.com/fahelmoreira/StrongId/refs/heads/Readme-update/Assets/stronId-logo.png)
+![StrongId Logo](https://github.com/fahelmoreira/StrongId/blob/main/Assets/stronId-logo.png?raw=true)
 
 
 # StrongId
 
-Strongly-typed, prefixed identifiers for .NET. A `ShoppingCartId` is not assignable to a `ShoppingListId`, even though both wrap a string. Identifiers are `prefix_<UUID v7 hex>` (e.g. `cart_019df93d327f710db5ff492547609240`) so they sort chronologically, are URL-safe, and self-describe their type at a glance.
+Strongly-typed, prefixed identifiers for .NET. A `ShoppingCartId` is not assignable to a `ShoppingListId`, even though both wrap a string. Identifiers are `prefix_<value>` so they sort chronologically, are URL-safe, and self-describe their type at a glance.
+
+Pick the generation scheme that fits the column:
+- `Uuid7` — chronologically sortable UUID v7 (32 hex chars). The default.
+- `Uuid4` — random UUID v4 (32 hex chars).
+- `SequenceString` — **compact 18-char Crockford-base32** id, 48-bit ms timestamp + 40-bit randomness. ~44% shorter than a UUID, still time-sortable for index locality.
+
+Example values:
+```
+cart_06f2d9s7dndqr9jdhw                     ← SequenceString
+prod_019e26a7276c7ec6b7786c9335345133       ← Uuid7
+cust_03179215585947b89d823dd774160225       ← Uuid4
+```
 
 ## Solution layout
 
@@ -14,7 +26,7 @@ Strongly-typed, prefixed identifiers for .NET. A `ShoppingCartId` is not assigna
 | `StrongId.EntityFramework` | EF Core `ValueConverter`s and `PropertyBuilder` extensions. |
 | `StrongId.Tests` | xUnit unit tests for the core. |
 | `StrongId.EntityFramework.Tests` | xUnit integration tests against an in-memory SQLite database. |
-| `Demo` | Minimal console project demonstrating usage. |
+| `Demo` | Console project demonstrating every id scheme and storage format end-to-end. |
 
 ## Defining an id
 
@@ -24,12 +36,20 @@ Two requirements:
 
 ```csharp
 using StrongId.Attributes;
+using StrongId.Configuration;
 
-[StrongIdPrefix("cart")]
-public partial class ShoppingCartId;
-
+// Uses the global default scheme (Uuid7 unless overridden).
 [StrongIdPrefix("list")]
 public partial class ShoppingListId;
+
+// Compact 18-char time-sortable id.
+[StrongIdPrefix("cart", IdScheme.SequenceString)]
+public partial class ShoppingCartId;
+
+// UUID v7 generation but forced to string storage in EF
+// (keeps the "ord_" prefix in the database column).
+[StrongIdPrefix("ord", IdScheme.Uuid7, StorageFormat.String)]
+public partial class OrderId;
 ```
 
 The source generator emits a second partial for each id with:
@@ -54,15 +74,34 @@ Reference `StrongId` twice — once as a normal library and once as an analyzer 
 </ItemGroup>
 ```
 
+## Global defaults
+
+`StrongIdDefaults` configures the fallback scheme/storage for any `[StrongIdPrefix]` that doesn't specify its own. Attribute values always override the global default.
+
+```csharp
+using StrongId.Configuration;
+
+StrongIdDefaults.Configure(c =>
+{
+    c.IdScheme = IdScheme.SequenceString;     // default for ids without an explicit scheme
+    c.StorageFormat = StorageFormat.Native;   // default storage policy for EF
+});
+```
+
+| Setting | Values | Default |
+| --- | --- | --- |
+| `IdScheme` | `Uuid7`, `Uuid4`, `SequenceString` | `Uuid7` |
+| `StorageFormat` | `Native`, `String` | `Native` |
+
 ## Core API
 
 `StrongIdBase<T>` exposes:
 
 | Member | Purpose |
 | --- | --- |
-| `static T Create()` | Generates a new id with a fresh UUID v7. Throws `MissingFieldException` if `[StrongIdPrefix]` is missing. |
+| `static T Create()` | Generates a new id using the resolved `IdScheme`. Throws `MissingFieldException` if `[StrongIdPrefix]` is missing. |
 | `static T Empty` | Returns `<prefix>_empty` (or `_empty` if no prefix attribute). |
-| `static T FromString(string value)` | Parses a string. Throws `InvalidCastException` on wrong prefix or invalid hex; throws `MissingFieldException` if the type has no prefix attribute. |
+| `static T FromString(string value)` | Parses a string. Throws `InvalidCastException` on wrong prefix or malformed suffix; throws `MissingFieldException` if the type has no prefix attribute. |
 | `static bool TryParse(string value, out T result)` | Non-throwing variant. |
 | `static string Prefix` | The configured prefix from the attribute. |
 | `Validate(...)` | `IValidatableObject` — flags a `Value` whose prefix doesn't match. |
@@ -70,15 +109,26 @@ Reference `StrongId` twice — once as a normal library and once as an analyzer 
 | `ToString()` | Returns the underlying string. |
 
 ```csharp
-var cartId = ShoppingCartId.Create();           // cart_019df93d...
+var cartId = ShoppingCartId.Create();           // cart_06f2d9s7dndqr9jdhw
 
-var parsed = ShoppingCartId.FromString("cart_019df8fe572c79e186922e1a64fd2bbf");
+var parsed = ShoppingCartId.FromString("cart_06f2d9s7dndqr9jdhw");
 
 if (ShoppingCartId.TryParse(input, out var id))
 {
     // safe path
 }
 ```
+
+## The `SequenceString` scheme
+
+A compact alternative to UUID for primary-key columns:
+
+- **18 characters** (vs 32 for UUID `N` format) — ~44% shorter, halves index size for clustered PKs.
+- **Time-sortable**: 48-bit Unix-ms timestamp in the high bits, so lexicographic order matches generation order and inserts stay locality-friendly.
+- **Collision-safe**: 40 bits of cryptographic randomness — birthday-collision 50% at ~1M ids generated in the *same millisecond*.
+- **Crockford Base32 alphabet** (`0-9 a-z` minus `i l o u`) — case-insensitive, URL-safe, no ambiguous characters.
+
+Encoded layout: `prefix_<10 chars timestamp><8 chars randomness>` (e.g. `cart_06f2d9s7dndqr9jdhw`).
 
 ## JSON serialization
 
@@ -88,7 +138,7 @@ Because the generator emits `[JsonConverter]` on each id type, serialization is 
 var cart = new ShoppingCart { Id = ShoppingCartId.Create(), Items = [...] };
 
 var json = JsonSerializer.Serialize(cart);
-// {"Id":"cart_019df93d...","Items":[...]}
+// {"Id":"cart_06f2d9s7dndqr9jdhw","Items":[...]}
 
 var roundTrip = JsonSerializer.Deserialize<ShoppingCart>(json);
 ```
@@ -97,7 +147,7 @@ A wrong prefix during deserialization throws `InvalidCastException`, so an `orde
 
 ## Entity Framework Core
 
-`StrongId.EntityFramework` provides two converters and matching extension methods on `PropertyBuilder<T>`:
+`StrongId.EntityFramework` ships three `PropertyBuilder<T>` extensions:
 
 ```csharp
 using StrongId.EntityFramework.Extension;
@@ -107,24 +157,30 @@ protected override void OnModelCreating(ModelBuilder modelBuilder)
     modelBuilder.Entity<Product>(b =>
     {
         b.HasKey(p => p.Id);
-        b.Property(p => p.Id).HasUuIdConversion();          // stored as UUID/Guid
-        b.Property(p => p.OwnerId!).HasUuIdConversion();    // nullable id
+        b.Property(p => p.Id).HasAutoConversion();      // picks the converter automatically
     });
 
-    modelBuilder.Entity<Tag>(b =>
-    {
-        b.HasKey(t => t.Id);
-        b.Property(t => t.Id).HasStringConversion();        // stored as full prefixed string
-    });
+    // Explicit overrides remain available:
+    modelBuilder.Entity<Customer>(b => b.Property(c => c.Id).HasUuIdConversion());
+    modelBuilder.Entity<Tag>(b      => b.Property(t => t.Id).HasStringConversion());
 }
 ```
 
-| Extension | Underlying converter | Storage |
-| --- | --- | --- |
-| `HasUuIdConversion<T>()` | `Converter.ConvertToUUId<T>` | `Guid` / `uuid` (Postgres) / `TEXT` (SQLite) — only the hex part is persisted; the prefix is reconstructed on read from the type's `[StrongIdPrefix]`. |
-| `HasStringConversion<T>()` | `Converter.ConvertToString<T>` | The full prefixed string is persisted as-is. |
+| Extension | Behavior |
+| --- | --- |
+| `HasAutoConversion<T>()` | Reads the resolved `IdScheme` / `StorageFormat` for `T` and picks the appropriate converter. **Recommended default.** |
+| `HasUuIdConversion<T>()` | Forces UUID/Guid storage — only the hex part is persisted; the prefix is reconstructed on read. |
+| `HasStringConversion<T>()` | Forces full-string storage — the prefixed value is persisted as-is. |
 
-Both extensions constrain `T : StrongIdBase<T>, IStrongIdFactory<T>` so misuse is a compile error.
+### `HasAutoConversion` selection rules
+
+| `StorageFormat` | `IdScheme` | Converter chosen | Column type |
+| --- | --- | --- | --- |
+| `String` | *(any)* | `ConvertToString<T>` | `TEXT` — full prefixed string |
+| `Native` | `Uuid7` / `Uuid4` | `ConvertToUUId<T>` | `Guid` / `uuid` (Postgres) / `TEXT` (SQLite) — bare GUID |
+| `Native` | `SequenceString` | `ConvertToString<T>` | `TEXT` — full prefixed string (SequenceString isn't a Guid) |
+
+All three extensions constrain `T : StrongIdBase<T>, IStrongIdFactory<T>` so misuse is a compile error.
 
 ## Why `partial`?
 
@@ -142,7 +198,7 @@ dotnet test StrongId.Tests/StrongId.Tests.csproj
 # EF integration tests (uses an in-memory SQLite database; no Docker required)
 dotnet test StrongId.EntityFramework.Tests/StrongId.EntityFramework.Tests.csproj
 
-# Run the demo
+# Run the demo — generates every id scheme, round-trips through JSON and SQLite
 dotnet run --project Demo/Demo.csproj
 ```
 
