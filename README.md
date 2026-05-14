@@ -1,3 +1,7 @@
+
+<img src="https://raw.githubusercontent.com/fahelmoreira/StrongId/refs/heads/main/Assets/stronId-logo.png" alt="StrongId Logo" style="max-width: 500px; width: 100%" />
+
+
 # StrongId
 
 Strongly-typed, prefixed identifiers for .NET. A `ShoppingCartId` is not assignable to a `ShoppingListId`, even though both wrap a string. Identifiers are `prefix_<UUID v7 hex>` (e.g. `cart_019df93d327f710db5ff492547609240`) so they sort chronologically, are URL-safe, and self-describe their type at a glance.
