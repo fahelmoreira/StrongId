@@ -22,8 +22,8 @@ cust_03179215585947b89d823dd774160225       ← Uuid4
 
 | Project | Purpose |
 | --- | --- |
-| `StrongId` | Core types and the source generator. Multi-targeted: `net10.0` for the library, `netstandard2.0` for the analyzer. |
-| `StrongId.EntityFramework` | EF Core `ValueConverter`s and `PropertyBuilder` extensions. |
+| `StrongId` | Core types and the source generator. Multi-targeted: `net8.0`, `net9.0`, `net10.0` and `netstandard2.1` for the library; `netstandard2.0` for the analyzer. |
+| `StrongId.EntityFramework` | EF Core `ValueConverter`s and `PropertyBuilder` extensions. Multi-targeted `net7.0`, `net8.0`, `net9.0`, `net10.0` — the EF Core major lines up with the runtime. |
 | `StrongId.Tests` | xUnit unit tests for the core. |
 | `StrongId.EntityFramework.Tests` | xUnit integration tests against an in-memory SQLite database. |
 | `Demo` | Console project demonstrating every id scheme and storage format end-to-end. |
@@ -55,8 +55,9 @@ public partial class OrderId;
 The source generator emits a second partial for each id with:
 - the `: StrongIdBase<TSelf>` base class — so the user-written declaration stays a one-liner with no generic self-reference;
 - a **private parameterless constructor** — `new ShoppingCartId()` is a compile error externally, forcing all construction through factory methods;
-- the `IStrongIdFactory<TSelf>` static-abstract-interface implementation — used internally by `StrongIdBase<T>` to construct instances without needing a `new()` constraint;
-- `[JsonConverter(typeof(StrongIdJsonConverter))]` — `System.Text.Json` serializes ids as flat strings, no `JsonSerializerOptions` setup needed at the call site.
+- the `IStrongIdFactory<TSelf>` static-abstract-interface implementation — used internally by `StrongIdBase<T>` to construct instances without needing a `new()` constraint (on `netstandard2.1` the same `public static TSelf NewInstance(string)` method satisfies the contract by convention and is invoked reflectively);
+- `[JsonConverter(typeof(StrongIdJsonConverter))]` — `System.Text.Json` serializes ids as flat strings, no `JsonSerializerOptions` setup needed at the call site;
+- `[TypeConverter(typeof(IdTypeConverter<TSelf>))]` — `System.ComponentModel.TypeDescriptor` resolves a converter that round-trips the id to and from `string` (and `Guid` for UUID-backed schemes), so ASP.NET Core model binding, `IConfiguration.Get<T>()`, designers and any other reflection-based conversion pipeline pick it up automatically.
 
 The generator runs on `partial` classes carrying `[StrongIdPrefix]`. Classes that already inherit from `StrongIdBase<T>` directly are also picked up for backwards compatibility. Non-partial declarations are ignored.
 
@@ -145,6 +146,31 @@ var roundTrip = JsonSerializer.Deserialize<ShoppingCart>(json);
 
 A wrong prefix during deserialization throws `InvalidCastException`, so an `order_…` value will never silently land in a `UserId` property.
 
+## `TypeConverter` integration
+
+The generator stamps `[TypeConverter(typeof(IdTypeConverter<TSelf>))]` onto each id, so any code path that goes through `TypeDescriptor.GetConverter(...)` works out of the box — no per-id registration:
+
+```csharp
+// ASP.NET Core route/query binding: `GET /users/{id}`
+public IActionResult Get(UserId id) => Ok(id);
+
+// IConfiguration → strongly-typed options
+public class AppOptions { public UserId AdminId { get; set; } = null!; }
+builder.Services.Configure<AppOptions>(builder.Configuration.GetSection("App"));
+// appsettings.json: { "App": { "AdminId": "user_019df8fe572c79e186922e1a64fd2bbf" } }
+```
+
+The converter handles both directions for `string` and `Guid`:
+
+| Source / Target | Behavior |
+| --- | --- |
+| `string` → `TId` | `StrongIdBase<TId>.FromString(...)` — same validation as JSON deserialization. |
+| `Guid` → `TId` | `StrongIdBase<TId>.FromUuid(...)` — useful when persistence stores only the bare UUID. |
+| `TId` → `string` | Returns the prefixed `Value`. |
+| `TId` → `Guid` | Returns the underlying `Uuid` (UUID-backed schemes only). |
+
+A wrong prefix or malformed value throws `InvalidCastException`, matching `FromString` semantics.
+
 ## Entity Framework Core
 
 `StrongId.EntityFramework` ships three `PropertyBuilder<T>` extensions:
@@ -184,7 +210,7 @@ All three extensions constrain `T : StrongIdBase<T>, IStrongIdFactory<T>` so mis
 
 ## Why `partial`?
 
-`System.Text.Json` does not honor `[JsonConverter]` declared on a base class for derived types (it reads the attribute with `inherit: false`). The library uses a Roslyn source generator to put the attribute (and the private constructor and the factory implementation) directly on each derived id class, which requires the user-written declaration to be `partial`. This is the single boilerplate cost: one keyword.
+`System.Text.Json` does not honor `[JsonConverter]` declared on a base class for derived types (it reads the attribute with `inherit: false`); the same is true for `[TypeConverter]`. The library uses a Roslyn source generator to put both attributes (and the private constructor and the factory implementation) directly on each derived id class, which requires the user-written declaration to be `partial`. This is the single boilerplate cost: one keyword.
 
 ## Building and testing
 

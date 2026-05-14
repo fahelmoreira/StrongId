@@ -91,6 +91,7 @@ public class StrongIdJsonConverterGenerator : IIncrementalGenerator
             sb.AppendLine();
         }
         sb.AppendLine("[global::System.Text.Json.Serialization.JsonConverter(typeof(global::StrongId.Converters.StrongIdJsonConverter))]");
+        sb.Append("[global::System.ComponentModel.TypeConverter(typeof(global::StrongId.Converters.IdTypeConverter<").Append(name).AppendLine(">))]");
         sb.Append("partial class ").Append(name).Append(" : ");
         if (!hasBase)
         {
