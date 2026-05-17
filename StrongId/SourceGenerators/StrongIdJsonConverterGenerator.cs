@@ -40,6 +40,35 @@ public class StrongIdJsonConverterGenerator : IIncrementalGenerator
         });
     }
 
+    private static string? ReadSaltFromAttribute(INamedTypeSymbol symbol)
+    {
+        foreach (var attr in symbol.GetAttributes())
+        {
+            if (attr.AttributeClass?.ToDisplayString() != PrefixAttributeFullName) continue;
+
+            string? salt = null;
+            var ctor = attr.ConstructorArguments;
+
+            // Positional: (prefix, scheme, storage, salt)
+            if (ctor.Length > 3 && ctor[3].Value is string s)
+            {
+                salt = s;
+            }
+
+            foreach (var named in attr.NamedArguments)
+            {
+                if (named.Key == "CustomSalt" && named.Value.Value is string ns)
+                {
+                    salt = ns;
+                }
+            }
+
+            return salt;
+        }
+
+        return null;
+    }
+
     private static bool IsPartial(ClassDeclarationSyntax decl)
     {
         foreach (var mod in decl.Modifiers)
@@ -100,10 +129,39 @@ public class StrongIdJsonConverterGenerator : IIncrementalGenerator
         sb.Append("global::StrongId.Interfaces.IStrongIdFactory<").Append(name).AppendLine(">");
         sb.AppendLine("{");
         sb.Append("    private ").Append(name).AppendLine("() { }");
-        sb.Append("    public static ").Append(name).Append(" NewInstance(string value) => new ").Append(name).AppendLine("() { Value = value };");
+
+        // Per-type opt-in: a non-null `salt:` argument on the attribute populates the
+        // protected Salt on StrongIdBase via the same object-initializer pattern as Value.
+        var customSalt = ReadSaltFromAttribute(symbol);
+        sb.Append("    public static ").Append(name).Append(" NewInstance(string value) => new ").Append(name).Append("() { Value = value");
+        if (customSalt is not null)
+        {
+            sb.Append(", Salt = \"").Append(EscapeStringLiteral(customSalt)).Append("\"");
+        }
+        sb.AppendLine(" };");
+
         sb.AppendLine("}");
 
         var hint = (ns is null ? name : ns + "." + name) + ".StrongIdCtor.g.cs";
         spc.AddSource(hint, sb.ToString());
+    }
+
+    private static string EscapeStringLiteral(string value)
+    {
+        var sb = new StringBuilder(value.Length);
+        foreach (var c in value)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\0': sb.Append("\\0"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
     }
 }

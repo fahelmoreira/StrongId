@@ -50,6 +50,12 @@ public partial class ShoppingCartId;
 // (keeps the "ord_" prefix in the database column).
 [StrongIdPrefix("ord", IdScheme.Uuid7, StorageFormat.String)]
 public partial class OrderId;
+
+// SequenceString id with a type-bound salt — the random portion carries a 16-bit
+// HMAC signature so a `sess_…` string generated for one type cannot be re-parsed
+// as another id type sharing the same prefix. See "Salting SequenceString ids".
+[StrongIdPrefix("sess", IdScheme.SequenceString, salt: "session-v1")]
+public partial class SessionId;
 ```
 
 The source generator emits a second partial for each id with:
@@ -86,6 +92,7 @@ StrongIdDefaults.Configure(c =>
 {
     c.IdScheme = IdScheme.SequenceString;     // default for ids without an explicit scheme
     c.StorageFormat = StorageFormat.Native;   // default storage policy for EF
+    c.UseSalt = true;                         // sign every SequenceString id with its type's salt
 });
 ```
 
@@ -93,6 +100,8 @@ StrongIdDefaults.Configure(c =>
 | --- | --- | --- |
 | `IdScheme` | `Uuid7`, `Uuid4`, `SequenceString` | `Uuid7` |
 | `StorageFormat` | `Native`, `String` | `Native` |
+| `IgnoreSuffixValidation` | `bool` | `false` |
+| `UseSalt` | `bool` | `false` |
 
 ## Core API
 
@@ -101,6 +110,7 @@ StrongIdDefaults.Configure(c =>
 | Member | Purpose |
 | --- | --- |
 | `static T Create()` | Generates a new id using the resolved `IdScheme`. Throws `MissingFieldException` if `[StrongIdPrefix]` is missing. |
+| `internal static T Create(DateTimeOffset timestamp)` | `SequenceString`-only — generates an id whose 48-bit time prefix is `timestamp` instead of `UtcNow`. Useful for back-mapping historical ids (e.g. backfilling from a legacy `created_at`). Throws `NotSupportedException` for other schemes. |
 | `static T Empty` | Returns `<prefix>_empty` (or `_empty` if no prefix attribute). |
 | `static T FromString(string value)` | Parses a string. Throws `InvalidCastException` on wrong prefix or malformed suffix; throws `MissingFieldException` if the type has no prefix attribute. |
 | `static bool TryParse(string value, out T result)` | Non-throwing variant. |
@@ -130,6 +140,43 @@ A compact alternative to UUID for primary-key columns:
 - **Crockford Base32 alphabet** (`0-9 a-z` minus `i l o u`) — case-insensitive, URL-safe, no ambiguous characters.
 
 Encoded layout: `prefix_<10 chars timestamp><8 chars randomness>` (e.g. `cart_06f2d9s7dndqr9jdhw`).
+
+## Salting `SequenceString` ids
+
+By default, any 18-char Crockford-base32 suffix with the right prefix is a structurally valid id — `cart_…` and `order_…` would both accept the same suffix bytes. **Salting** binds the suffix to its id type by replacing the last 2 of the 5 random bytes with a 16-bit `HMAC-SHA256(salt, timestamp ‖ random)` signature. Round-trip parsing recomputes the HMAC and rejects mismatches, so re-prefixing a suffix from one type to another is detected at `FromString`.
+
+Format stays 18 chars; the trade-off is collision space drops from 40 to 24 random bits (~50% birthday collision at ~4 800 ids in the same millisecond — still well beyond realistic per-millisecond throughput).
+
+### Per-type opt-in
+
+Pass a non-null `salt:` to the attribute. The source generator emits the value into the generated `NewInstance` factory, where it populates the `protected string? Salt { get; init; }` property on `StrongIdBase<T>` — same object-initializer pattern as `Value`, but `protected` so it never appears in your public API surface.
+
+```csharp
+// Salted with an explicit value.
+[StrongIdPrefix("sess", IdScheme.SequenceString, salt: "session-v1")]
+public partial class SessionId;
+
+var id = SessionId.Create();                     // sess_06f3b166sp3n44pjnc
+SessionId.FromString(id.Value);                  // OK
+SessionId.FromString("sess_" + otherSuffix);     // InvalidCastException — bad signature
+```
+
+### Global opt-in
+
+Setting `StrongIdDefaults.Options.UseSalt = true` salts **every** `SequenceString` id type at runtime, using `prefix + ClassName` as the default salt for types that don't supply one explicitly. Per-type `salt:` arguments still take precedence:
+
+```csharp
+StrongIdDefaults.Configure(o => o.UseSalt = true);
+
+// CartId has no salt: arg → uses "cartShoppingCartId" as the runtime salt.
+// SessionId still uses "session-v1" (per-type wins).
+```
+
+Toggling `UseSalt` at runtime is honored — the salt is resolved per-call, not cached across the flag.
+
+### Bypassing validation
+
+Existing `StrongIdDefaults.Options.IgnoreSuffixValidation = true` short-circuits both alphabet/length and signature checks. Useful for migrating legacy values or running diagnostics.
 
 ## JSON serialization
 

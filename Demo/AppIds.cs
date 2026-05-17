@@ -23,3 +23,9 @@ public partial class ShoppingCartId;
 // Uuid7 id but forced to string storage — the "ord_" prefix is preserved in the DB column.
 [StrongIdPrefix("ord", IdScheme.Uuid7, StorageFormat.String)]
 public partial class OrderId;
+
+// SequenceString id with a salted, type-bound suffix. The suffix carries a 16-bit
+// HMAC of `prefix + className`, so a "sess_…" string generated for one type cannot
+// be re-parsed as another id type using the same prefix.
+[StrongIdPrefix("sess", IdScheme.SequenceString, salt: "string-salt")]
+public partial class SessionId;

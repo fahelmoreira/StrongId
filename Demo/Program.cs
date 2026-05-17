@@ -23,6 +23,7 @@ var prodId  = ProductId.Create();        // Uuid7 — hex
 var custId  = CustomerId.Create();       // Uuid4 — hex
 var cartId  = ShoppingCartId.Create();   // SequenceString — Crockford base32
 var orderId = OrderId.Create();          // Uuid7 + StorageFormat.String
+var sessId  = SessionId.Create();        // SequenceString + per-type salt
 
 Console.WriteLine("── Id generation ──");
 PrintId("ShoppingListId  (global default)", listId.Value);
@@ -30,6 +31,7 @@ PrintId("ProductId       (Uuid7)         ", prodId.Value);
 PrintId("CustomerId      (Uuid4)         ", custId.Value);
 PrintId("ShoppingCartId  (SequenceString)", cartId.Value);
 PrintId("OrderId         (Uuid7 + String)", orderId.Value);
+PrintId("SessionId       (Salted Seq)    ", sessId.Value);
 
 // ──────────────────────────────────────────────────────────────────
 // 3. JSON round-trip — source-generated converter flattens to a string.
@@ -63,6 +65,18 @@ if (ShoppingCartId.TryParse(cartId.Value, out var parsed))
     Console.WriteLine($"Parsed cart id: {parsed}");
 }
 Console.WriteLine($"TryParse rubbish: {ShoppingCartId.TryParse("cart_not-valid", out _)}");
+
+// ──────────────────────────────────────────────────────────────────
+// 5b. Salted SequenceString — suffix carries a 16-bit signature
+//     derived from the id's type, so re-prefixed strings are rejected.
+// ──────────────────────────────────────────────────────────────────
+Console.WriteLine("\n── Salted SequenceString ──");
+Console.WriteLine($"Session id parses back: {SessionId.TryParse(sessId.Value, out _)}");
+
+// Build an 18-char base32 suffix that's well-formed for an unsalted
+// SequenceString but won't match the SessionId salt signature.
+var forged = $"sess_{ShoppingCartId.Create().Value.Split('_')[1]}";
+Console.WriteLine($"Forged session id parses back: {SessionId.TryParse(forged, out _)}  (expected False)");
 
 // ──────────────────────────────────────────────────────────────────
 // 6. EF Core + HasAutoConversion — picks UUID or string storage
