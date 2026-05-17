@@ -51,6 +51,46 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
         }
     }
 
+    /// <summary>
+    /// Per-type salt populated by the source generator when the <c>[StrongIdPrefix]</c>
+    /// attribute supplies a non-null <c>salt</c> argument. Set via the same object
+    /// initializer pattern as <see cref="StrongId.Value"/> inside the generated
+    /// <c>NewInstance</c> factory. <c>null</c> when the type didn't opt in.
+    /// </summary>
+    protected string? Salt { get; init; }
+
+    private static readonly string? _generatedSalt = ReadSaltFromTemplate();
+    private static readonly string? _defaultSalt = LoadDefaultSalt();
+
+    private static string? ReadSaltFromTemplate()
+    {
+        // Materialise one throwaway instance via the source-generated factory so the
+        // protected Salt populated in its object initializer becomes observable here.
+        // This replaces the previous reflection-based field lookup.
+        return Empty is StrongIdBase<T> typed ? typed.Salt : null;
+    }
+
+    private static string? LoadDefaultSalt()
+    {
+        var attr = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+        return attr is null ? null : attr.Prefix + typeof(T).Name;
+    }
+
+    /// <summary>
+    /// Resolves the active salt for this id type. Per-type opt-in (a non-null
+    /// <c>salt</c> on the attribute) wins; otherwise the global
+    /// <see cref="StrongIdOptions.UseSalt"/> falls back to <c>prefix + ClassName</c>.
+    /// </summary>
+    private static string? ResolveSalt()
+    {
+        if (_generatedSalt is not null)
+        {
+            return _generatedSalt;
+        }
+
+        return StrongIdDefaults.Options.UseSalt ? _defaultSalt : null;
+    }
+
     protected StrongIdBase() { }
 
     private static T NewInstance(string value)
@@ -110,7 +150,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             IdScheme.Uuid7 => $"{CreateUuid7():N}",
             IdScheme.Uuid4 => $"{Guid.NewGuid():N}",
             IdScheme.Int => throw new NotSupportedException("Int scheme is not supported for automatic generation"),
-            IdScheme.SequenceString => SequenceStringGenerator.Create(),
+            IdScheme.SequenceString => SequenceStringGenerator.Create(ResolveSalt()),
             _ => throw new NotSupportedException($"IdScheme '{ResolvedIdScheme}' is not supported.")
         };
 
@@ -162,7 +202,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
         {
             var suffix = value.Split("_")[1];
 
-            if (!SequenceStringGenerator.IsValid(suffix))
+            if (!SequenceStringGenerator.IsValid(suffix, ResolveSalt()))
             {
                 throw new InvalidCastException($"The suffix {(string.IsNullOrEmpty(suffix) ? "empty" : suffix)} is invalid for {typeof(T).Name}");
             }
