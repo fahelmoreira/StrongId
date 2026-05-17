@@ -11,13 +11,21 @@ internal static class SequenceStringGenerator
     private const int SignatureLength = 2;
     private const int PayloadLength = BufferLength - SignatureLength;
 
-    internal static string Create() => Create(salt: null);
+    internal static string Create() => Create(DateTimeOffset.UtcNow, salt: null);
 
-    internal static string Create(string? salt)
+    internal static string Create(string? salt) => Create(DateTimeOffset.UtcNow, salt);
+
+    /// <summary>
+    /// Generates a SequenceString suffix using <paramref name="timestamp"/> for the
+    /// time-sortable prefix instead of <see cref="DateTimeOffset.UtcNow"/>. Use this
+    /// when re-mapping historical ids onto a specific moment in time. The randomness
+    /// and (optional) salt signature are generated as usual.
+    /// </summary>
+    internal static string Create(DateTimeOffset timestamp, string? salt)
     {
         Span<byte> buffer = stackalloc byte[BufferLength];
 
-        var ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var ms = timestamp.ToUnixTimeMilliseconds();
         buffer[0] = (byte)(ms >> 40);
         buffer[1] = (byte)(ms >> 32);
         buffer[2] = (byte)(ms >> 24);

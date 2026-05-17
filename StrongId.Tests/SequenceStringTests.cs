@@ -1,5 +1,6 @@
 using System.Reflection;
 using Shouldly;
+using StrongId.Base;
 using StrongId.Configuration;
 using Xunit;
 
@@ -284,6 +285,57 @@ public class SequenceStringTests
         {
             StrongIdDefaults.Configure(o => o.UseSalt = original);
         }
+    }
+
+    [Fact]
+    public void CreateWithTimestamp_EmbedsRequestedTimestamp_AndRoundTrips()
+    {
+        var ts = new DateTimeOffset(2020, 6, 15, 12, 34, 56, TimeSpan.Zero);
+
+        var a = StrongIdBase<CartId>.Create(ts);
+        var b = StrongIdBase<CartId>.Create(ts);
+
+        // Both round-trip through FromString (unsalted CartId — alphabet/length check only).
+        CartId.FromString(a.Value).Value.ShouldBe(a.Value);
+        CartId.FromString(b.Value).Value.ShouldBe(b.Value);
+
+        // Same millisecond → identical timestamp-encoded prefix (first ~9 base32 chars
+        // cover the 48-bit timestamp). The random tail differs.
+        var aSuffix = a.Value.Split('_')[1];
+        var bSuffix = b.Value.Split('_')[1];
+        aSuffix.Substring(0, 9).ShouldBe(bSuffix.Substring(0, 9));
+        a.Value.ShouldNotBe(b.Value);
+    }
+
+    [Fact]
+    public void CreateWithTimestamp_OrdersLexicographicallyByTimestamp()
+    {
+        var earlier = StrongIdBase<CartId>.Create(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var later   = StrongIdBase<CartId>.Create(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        string.CompareOrdinal(later.Value, earlier.Value).ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public void CreateWithTimestamp_RespectsPerTypeSalt()
+    {
+        var ts = new DateTimeOffset(2024, 3, 1, 10, 0, 0, TimeSpan.Zero);
+        var id = StrongIdBase<SaltedId>.Create(ts);
+
+        // Round-trips because the signature was computed with the type's salt.
+        SaltedId.FromString(id.Value).Value.ShouldBe(id.Value);
+
+        // Swapping the prefix to a different salted type with the same prefix scheme fails.
+        var stripped = id.Value.Split('_')[1];
+        Should.Throw<InvalidCastException>(() => CustomSaltId.FromString($"custom_{stripped}"));
+    }
+
+    [Fact]
+    public void CreateWithTimestamp_ThrowsForNonSequenceStringSchemes()
+    {
+        // UserId is the default scheme (Uuid7).
+        Should.Throw<NotSupportedException>(() =>
+            StrongIdBase<UserId>.Create(DateTimeOffset.UtcNow));
     }
 
     // Salt is a protected instance property on StrongIdBase<T>, populated by the

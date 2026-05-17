@@ -27,5 +27,5 @@ public partial class OrderId;
 // SequenceString id with a salted, type-bound suffix. The suffix carries a 16-bit
 // HMAC of `prefix + className`, so a "sess_…" string generated for one type cannot
 // be re-parsed as another id type using the same prefix.
-[StrongIdPrefix("sess", IdScheme.SequenceString, salt: "aaaaiis")]
+[StrongIdPrefix("sess", IdScheme.SequenceString, salt: "string-salt")]
 public partial class SessionId;

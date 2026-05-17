@@ -158,6 +158,32 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     }
     
     /// <summary>
+    /// Creates a new <see cref="IdScheme.SequenceString"/> id using <paramref name="timestamp"/>
+    /// for the time-sortable prefix instead of <see cref="DateTimeOffset.UtcNow"/>. Use this
+    /// when re-mapping historical ids (e.g. backfilling a column from a legacy created_at).
+    /// Only supported for <see cref="IdScheme.SequenceString"/>.
+    /// </summary>
+    /// <exception cref="MissingFieldException">Thrown when the prefix attribute is missing.</exception>
+    /// <exception cref="NotSupportedException">Thrown when the resolved id scheme is not <see cref="IdScheme.SequenceString"/>.</exception>
+    internal static T Create(DateTimeOffset timestamp)
+    {
+        var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+
+        if (prefixAttribute is null)
+        {
+            throw new MissingFieldException("Prefix attribute is missing");
+        }
+
+        if (ResolvedIdScheme is not IdScheme.SequenceString)
+        {
+            throw new NotSupportedException($"Create(DateTimeOffset) is only supported for IdScheme.SequenceString — '{typeof(T).Name}' resolves to '{ResolvedIdScheme}'.");
+        }
+
+        var value = SequenceStringGenerator.Create(timestamp, ResolveSalt());
+        return NewInstance($"{prefixAttribute.Prefix}_{value}");
+    }
+
+    /// <summary>
     /// Creates a new instance of the StrongIdBase from a string.
     /// </summary>
     /// <param name="value"></param>
