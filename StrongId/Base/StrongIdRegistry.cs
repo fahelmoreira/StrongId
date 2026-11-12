@@ -34,8 +34,9 @@ internal static class StrongIdRegistry
             throw new ArgumentNullException(nameof(value));
         }
 
-        var separator = value.IndexOf('_');
-        var prefix = separator < 0 ? value : value.Substring(0, separator);
+        // Suffixes never contain '_', so the prefix is everything before the last '_'
+        // (keeps prefixes that themselves contain '_' resolvable).
+        var prefix = StrongId.ExtractPrefix(value);
 
         if (!_snapshot.TryGetValue(prefix, out var entry))
         {

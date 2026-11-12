@@ -361,4 +361,43 @@ public class SequenceStringTests
         }
         return null;
     }
+
+    [Fact]
+    public void FromString_NormalisesUppercaseToCanonicalForm()
+    {
+        var id = CartId.Create();
+        var upper = "cart_" + id.Value.Substring("cart_".Length).ToUpperInvariant();
+
+        CartId.FromString(upper).ShouldBe(id);
+    }
+
+    [Fact]
+    public void FromString_ClearsUnusedTrailingBits()
+    {
+        // 18 base32 chars carry 90 bits for an 88-bit payload; the last char's low 2 bits are
+        // padding, so flipping them must yield the same id rather than a distinct one.
+        const string alphabet = "0123456789abcdefghjkmnpqrstvwxyz";
+        var id = CartId.Create();
+        var last = id.Value[id.Value.Length - 1];
+        var padded = id.Value.Substring(0, id.Value.Length - 1) + alphabet[alphabet.IndexOf(last) | 0b11];
+
+        CartId.FromString(padded).ShouldBe(id);
+    }
+
+    [Fact]
+    public void Salted_FromString_NormalisesUppercase()
+    {
+        var id = SaltedId.Create();
+        var upper = "salted_" + id.Value.Substring("salted_".Length).ToUpperInvariant();
+
+        SaltedId.FromString(upper).ShouldBe(id);
+    }
+
+    [Fact]
+    public void FromString_RejectsExtraSegments()
+    {
+        var id = CartId.Create();
+
+        Should.Throw<InvalidCastException>(() => CartId.FromString(id.Value + "_extra"));
+    }
 }

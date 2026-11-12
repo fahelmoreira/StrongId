@@ -186,57 +186,130 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     /// <summary>
     /// Creates a new instance of the StrongIdBase from a string.
     /// </summary>
-    /// <param name="value"></param>
-    /// <returns></returns>
+    /// <remarks>
+    /// The value must be <c>{prefix}_{suffix}</c>, where the suffix is a single segment that is
+    /// valid for the type's <see cref="IdScheme"/>. The suffix is matched case-insensitively and
+    /// the returned id always carries the canonical (lowercase) form, so every accepted spelling
+    /// of the same id yields the same <see cref="StrongId.Value"/>.
+    /// </remarks>
+    /// <param name="value">The string representation of the id.</param>
+    /// <returns>The parsed id.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="value"/> is <c>null</c>.</exception>
     /// <exception cref="MissingFieldException">Exception throw if the prefix is not available</exception>
-    /// <exception cref="InvalidCastException">Exception throw if the UUID is not valid </exception>
+    /// <exception cref="InvalidCastException">Thrown when the value is not a valid id for <typeparamref name="T"/>.</exception>
     public static T FromString(string value)
     {
+        if (value is null)
+        {
+            throw new ArgumentNullException(nameof(value));
+        }
+
         var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
-        
-        
+
         if(prefixAttribute is null)
         {
             throw new MissingFieldException($"Prefix attribute is missing for {typeof(T).Name}");
         }
-        
-        var prefix = value.Split("_")[0];
 
-        if (prefix != prefixAttribute.Prefix)
+        return TryParseCore(value, prefixAttribute.Prefix, out var result) switch
         {
-            throw new InvalidCastException($"The Prefix {(string.IsNullOrEmpty(prefix) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
+            ParseFailure.None => result,
+            ParseFailure.Prefix => throw new InvalidCastException(
+                $"The Prefix {DescribeEmpty(ExtractPrefix(value))} is invalid for {typeof(T).Name}"),
+            ParseFailure.Suffix => throw new InvalidCastException(
+                $"The suffix {DescribeEmpty(ExtractSuffix(value))} is invalid for {typeof(T).Name}"),
+            _ => throw new InvalidCastException($"The value {value} is invalid for {typeof(T).Name}")
+        };
+    }
+
+    private enum ParseFailure
+    {
+        None,
+        Prefix,
+        Suffix,
+        UnsupportedScheme
+    }
+
+    private static bool IsHex32(string value)
+    {
+        if (value.Length != 32)
+        {
+            return false;
+        }
+
+        foreach (var c in value)
+        {
+            if (c is not ((>= '0' and <= '9') or (>= 'a' and <= 'f') or (>= 'A' and <= 'F')))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string DescribeEmpty(string part) => string.IsNullOrEmpty(part) ? "empty" : part;
+
+    /// <summary>
+    /// Validates <paramref name="value"/> without throwing. On success <paramref name="result"/>
+    /// holds an id whose value is in canonical form.
+    /// </summary>
+    private static ParseFailure TryParseCore(string value, string prefix, out T result)
+    {
+        result = default!;
+
+        // The suffix never contains '_', so the prefix is everything before the last '_'.
+        // This keeps prefixes that themselves contain '_' working, and rejects values with
+        // extra segments ("user_<guid>_junk") or another type's longer prefix ("user_admin_<guid>").
+        if (!string.Equals(ExtractPrefix(value), prefix, StringComparison.Ordinal))
+        {
+            return ParseFailure.Prefix;
+        }
+
+        var suffix = ExtractSuffix(value);
+
+        if (suffix.Length == 0)
+        {
+            return ParseFailure.Suffix;
         }
 
         if (StrongIdDefaults.Options.IgnoreSuffixValidation)
         {
-            return NewInstance(value);
+            result = NewInstance(value);
+            return ParseFailure.None;
         }
 
-        if (ResolvedIdScheme is IdScheme.Uuid7 or IdScheme.Uuid4)
+        string canonicalSuffix;
+
+        switch (ResolvedIdScheme)
         {
-            var hex = value.Split("_")[1];
+            case IdScheme.Uuid7 or IdScheme.Uuid4:
+                // Guid.TryParseExact tolerates surrounding whitespace (and, on some runtimes,
+                // other layouts), so require exactly 32 hex digits before handing it over.
+                if (!IsHex32(suffix) || !Guid.TryParseExact(suffix, "N", out var guid))
+                {
+                    return ParseFailure.Suffix;
+                }
 
-            if(!Guid.TryParseExact(hex, "N", out var _))
-            {
-                throw new InvalidCastException($"The hex {(string.IsNullOrEmpty(hex) ? "empty" : prefix)} is invalid for {typeof(T).Name}");
-            }
+                canonicalSuffix = guid.ToString("N");
+                break;
 
-            return NewInstance(value);
+            case IdScheme.SequenceString:
+                if (!SequenceStringGenerator.TryCanonicalize(suffix, ResolveSalt(), out canonicalSuffix))
+                {
+                    return ParseFailure.Suffix;
+                }
+
+                break;
+
+            default:
+                return ParseFailure.UnsupportedScheme;
         }
 
-        if (ResolvedIdScheme is IdScheme.SequenceString)
-        {
-            var suffix = value.Split("_")[1];
-
-            if (!SequenceStringGenerator.IsValid(suffix, ResolveSalt()))
-            {
-                throw new InvalidCastException($"The suffix {(string.IsNullOrEmpty(suffix) ? "empty" : suffix)} is invalid for {typeof(T).Name}");
-            }
-
-            return NewInstance(value);
-        }
-
-        throw new InvalidCastException($"The value {value} is invalid for {typeof(T).Name}");
+        result = NewInstance(string.Equals(suffix, canonicalSuffix, StringComparison.Ordinal)
+            ? value
+            : $"{prefix}_{canonicalSuffix}");
+        return ParseFailure.None;
     }
 
     /// <summary>
@@ -254,19 +327,18 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     /// </summary>
     /// <param name="value">Value to convert</param>
     /// <param name="result">Strong id</param>
-    /// <returns></returns>
+    /// <returns><c>true</c> when <paramref name="value"/> is a valid id for <typeparamref name="T"/>.</returns>
     public static bool TryParse(string value, out T result)
     {
-        try
-        {
-            result = FromString(value);
-            return true;
-        }
-        catch (Exception)
+        var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+
+        if (value is null || prefixAttribute is null)
         {
             result = default!;
             return false;
         }
+
+        return TryParseCore(value, prefixAttribute.Prefix, out result) is ParseFailure.None;
     }
 
     /// <summary>
@@ -276,9 +348,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     /// <returns>A collection of <see cref="ValidationResult"/> indicating validation errors, if any.</returns>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        var prefix = Value.Split("_")[0];
-
-        if (prefix != Prefix)
+        if (Value is null || ExtractPrefix(Value) != Prefix)
         {
             yield return new ValidationResult("Prefix is invalid", [nameof(Value)]);
         }
@@ -343,7 +413,26 @@ public class StrongId : TypeConverter, IStrongId
     
     public string Value { get; init; } = null!;
     
-    internal Guid Uuid => Guid.ParseExact(Value.Split("_")[1], "N");
+    internal Guid Uuid => Guid.ParseExact(ExtractSuffix(Value), "N");
+
+    /// <summary>
+    /// Returns everything before the last <c>'_'</c> (the whole value when there is none).
+    /// Suffixes never contain <c>'_'</c>, so this is the prefix even when the prefix has one.
+    /// </summary>
+    internal static string ExtractPrefix(string value)
+    {
+        var separator = value.LastIndexOf('_');
+        return separator < 0 ? value : value.Substring(0, separator);
+    }
+
+    /// <summary>
+    /// Returns everything after the last <c>'_'</c> (empty when there is none).
+    /// </summary>
+    internal static string ExtractSuffix(string value)
+    {
+        var separator = value.LastIndexOf('_');
+        return separator < 0 ? string.Empty : value.Substring(separator + 1);
+    }
     
     protected StrongId()
     {

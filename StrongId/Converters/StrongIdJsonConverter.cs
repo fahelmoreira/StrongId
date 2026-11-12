@@ -39,7 +39,21 @@ public class StrongIdJsonConverter<T> : JsonConverter<T>
         }
 
         var value = reader.GetString();
-        return value is null ? default : StrongIdBase<T>.FromString(value);
+        if (value is null)
+        {
+            return default;
+        }
+
+        try
+        {
+            return StrongIdBase<T>.FromString(value);
+        }
+        catch (InvalidCastException ex)
+        {
+            // JsonException is what System.Text.Json callers (and ASP.NET Core model binding,
+            // which turns it into a 400) expect for malformed input.
+            throw new JsonException(ex.Message, ex);
+        }
     }
 
     public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)

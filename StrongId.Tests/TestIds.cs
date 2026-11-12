@@ -35,4 +35,11 @@ public partial class ShareTypeAId;
 [StrongIdPrefix("share", IdScheme.SequenceString, salt: "share-B-salt")]
 public partial class ShareTypeBId;
 
+// Prefixes containing '_': "user_admin" must not be confused with "user".
+[StrongIdPrefix("user_admin")]
+public partial class AdminUserId;
+
+[StrongIdPrefix("gift_cart", IdScheme.SequenceString)]
+public partial class GiftCartId;
+
 public partial class NoPrefixId : StrongIdBase<NoPrefixId>;

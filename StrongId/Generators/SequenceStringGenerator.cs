@@ -49,8 +49,17 @@ internal static class SequenceStringGenerator
 
     internal static bool IsValid(string suffix) => IsValid(suffix, salt: null);
 
-    internal static bool IsValid(string suffix, string? salt)
+    internal static bool IsValid(string suffix, string? salt) => TryCanonicalize(suffix, salt, out _);
+
+    /// <summary>
+    /// Validates <paramref name="suffix"/> and returns its canonical spelling: lowercase, with the
+    /// two unused trailing bits of the last character cleared. Several spellings decode to the same
+    /// bytes, so callers should store <paramref name="canonical"/> rather than the input.
+    /// </summary>
+    internal static bool TryCanonicalize(string suffix, string? salt, out string canonical)
     {
+        canonical = string.Empty;
+
         if (suffix.Length != EncodedLength)
         {
             return false;
@@ -62,6 +71,18 @@ internal static class SequenceStringGenerator
             return false;
         }
 
+        if (!HasValidSignature(decoded, salt))
+        {
+            return false;
+        }
+
+        var encoded = EncodeBase32(decoded);
+        canonical = string.Equals(encoded, suffix, StringComparison.Ordinal) ? suffix : encoded;
+        return true;
+    }
+
+    private static bool HasValidSignature(ReadOnlySpan<byte> decoded, string? salt)
+    {
         if (salt is null)
         {
             return true;
