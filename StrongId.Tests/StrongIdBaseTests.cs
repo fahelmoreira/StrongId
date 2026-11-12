@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Text.Json;
+using StrongId.Configuration;
 using Shouldly;
 using Xunit;
 
@@ -207,5 +209,123 @@ public class StrongIdBaseTests
     public void SourceGenerator_ImplementsIStrongIdFactory()
     {
         typeof(StrongId.Interfaces.IStrongIdFactory<UserId>).IsAssignableFrom(typeof(UserId)).ShouldBeTrue();
+    }
+
+    private const string Hex = "019df8fe572c79e186922e1a64fd2bbf";
+
+    [Theory]
+    [InlineData("user_" + Hex + "_anything")]
+    [InlineData("user_" + Hex + "_")]
+    [InlineData("user__" + Hex)]
+    [InlineData("user_{" + Hex + "}")]
+    [InlineData("user_019df8fe-572c-79e1-8692-2e1a64fd2bbf")]
+    [InlineData("user_ " + Hex)]
+    public void FromString_RejectsNonCanonicalShapes(string value)
+    {
+        Should.Throw<InvalidCastException>(() => UserId.FromString(value));
+        UserId.TryParse(value, out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void FromString_NormalisesUppercaseHexToCanonicalForm()
+    {
+        var parsed = UserId.FromString("user_" + Hex.ToUpperInvariant());
+
+        parsed.Value.ShouldBe("user_" + Hex);
+        parsed.ShouldBe(UserId.FromString("user_" + Hex));
+    }
+
+    [Fact]
+    public void FromString_KeepsCanonicalInputInstance()
+    {
+        var value = "user_" + Hex;
+        ReferenceEquals(UserId.FromString(value).Value, value).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("user")]
+    [InlineData("user_")]
+    [InlineData("")]
+    [InlineData("_")]
+    public void FromString_ThrowsInvalidCastForMalformedInput(string value)
+    {
+        Should.Throw<InvalidCastException>(() => UserId.FromString(value));
+        UserId.TryParse(value, out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void FromString_ThrowsArgumentNullForNull()
+    {
+        Should.Throw<ArgumentNullException>(() => UserId.FromString(null!));
+        UserId.TryParse(null!, out var result).ShouldBeFalse();
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void FromString_ReportsTheBadSuffixInTheMessage()
+    {
+        var ex = Should.Throw<InvalidCastException>(() => UserId.FromString("user_nothex"));
+        ex.Message.ShouldContain("nothex");
+    }
+
+    [Fact]
+    public void FromString_IgnoreSuffixValidation_StillRejectsBadStructure()
+    {
+        var original = StrongIdDefaults.Options.IgnoreSuffixValidation;
+        StrongIdDefaults.Configure(o => o.IgnoreSuffixValidation = true);
+        try
+        {
+            UserId.FromString("user_anything").Value.ShouldBe("user_anything");
+            Should.Throw<InvalidCastException>(() => UserId.FromString("user"));
+            Should.Throw<InvalidCastException>(() => UserId.FromString("user_"));
+            Should.Throw<InvalidCastException>(() => UserId.FromString("user_admin_" + Hex));
+        }
+        finally
+        {
+            StrongIdDefaults.Configure(o => o.IgnoreSuffixValidation = original);
+        }
+    }
+
+    [Fact]
+    public void PrefixWithUnderscore_RoundTrips()
+    {
+        var id = AdminUserId.Create();
+
+        id.Value.ShouldStartWith("user_admin_");
+        AdminUserId.FromString(id.Value).ShouldBe(id);
+        id.Validate(new System.ComponentModel.DataAnnotations.ValidationContext(id)).ShouldBeEmpty();
+        id.Uuid.ToString("N").ShouldBe(id.Value.Substring("user_admin_".Length));
+        AdminUserId.FromUuid(id.Uuid).ShouldBe(id);
+    }
+
+    [Fact]
+    public void PrefixWithUnderscore_IsNotConfusedWithShorterPrefix()
+    {
+        var admin = AdminUserId.Create();
+        var user = UserId.Create();
+
+        var ex = Should.Throw<InvalidCastException>(() => UserId.FromString(admin.Value));
+        ex.Message.ShouldContain("user_admin");
+        Should.Throw<InvalidCastException>(() => AdminUserId.FromString(user.Value));
+        Should.Throw<InvalidCastException>(() => AdminUserId.FromString("user_" + Hex));
+    }
+
+    [Fact]
+    public void PrefixWithUnderscore_WorksForSequenceString()
+    {
+        var id = GiftCartId.Create();
+
+        GiftCartId.FromString(id.Value).ShouldBe(id);
+        Should.Throw<InvalidCastException>(() => CartId.FromString(id.Value));
+    }
+
+    [Fact]
+    public void JsonConverter_ThrowsJsonExceptionForMalformedId()
+    {
+        Should.Throw<JsonException>(() => JsonSerializer.Deserialize<UserId>("\"user\""));
+        Should.Throw<JsonException>(() => JsonSerializer.Deserialize<UserId>("\"order_" + Hex + "\""));
+        Should.Throw<JsonException>(() => JsonSerializer.Deserialize<UserId>("\"user_" + Hex + "_x\""));
+        JsonSerializer.Deserialize<UserId>("null").ShouldBeNull();
+        JsonSerializer.Deserialize<UserId>("\"user_" + Hex.ToUpperInvariant() + "\"")!.Value.ShouldBe("user_" + Hex);
     }
 }
