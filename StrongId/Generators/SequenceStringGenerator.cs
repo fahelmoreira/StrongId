@@ -11,9 +11,46 @@ internal static class SequenceStringGenerator
     private const int SignatureLength = 2;
     private const int PayloadLength = BufferLength - SignatureLength;
 
-    internal static string Create() => Create(DateTimeOffset.UtcNow, salt: null);
+    /// <summary>
+    /// ASCII → 5-bit value lookup for <see cref="Alphabet"/>, case-insensitive.
+    /// Unused entries are <c>-1</c>.
+    /// </summary>
+    private static readonly sbyte[] DecodeTable = BuildDecodeTable();
 
-    internal static string Create(string? salt) => Create(DateTimeOffset.UtcNow, salt);
+    private static sbyte[] BuildDecodeTable()
+    {
+        var table = new sbyte[128];
+        for (var i = 0; i < table.Length; i++)
+        {
+            table[i] = -1;
+        }
+
+        for (var i = 0; i < Alphabet.Length; i++)
+        {
+            var c = Alphabet[i];
+            table[c] = (sbyte)i;
+            if (c is >= 'a' and <= 'z')
+            {
+                table[c - 32] = (sbyte)i;
+            }
+        }
+
+        return table;
+    }
+
+    /// <summary>
+    /// Encodes a salt into the HMAC key bytes. Callers on hot paths should compute this once
+    /// and pass the result to the <c>byte[]</c> overloads instead of re-encoding per call.
+    /// </summary>
+    internal static byte[]? GetSaltKey(string? salt) => salt is null ? null : Encoding.UTF8.GetBytes(salt);
+
+    internal static string Create() => Create(DateTimeOffset.UtcNow, saltKey: null);
+
+    internal static string Create(string? salt) => Create(DateTimeOffset.UtcNow, GetSaltKey(salt));
+
+    internal static string Create(byte[]? saltKey) => Create(DateTimeOffset.UtcNow, saltKey);
+
+    internal static string Create(DateTimeOffset timestamp, string? salt) => Create(timestamp, GetSaltKey(salt));
 
     /// <summary>
     /// Generates a SequenceString suffix using <paramref name="timestamp"/> for the
@@ -21,7 +58,7 @@ internal static class SequenceStringGenerator
     /// when re-mapping historical ids onto a specific moment in time. The randomness
     /// and (optional) salt signature are generated as usual.
     /// </summary>
-    internal static string Create(DateTimeOffset timestamp, string? salt)
+    internal static string Create(DateTimeOffset timestamp, byte[]? saltKey)
     {
         Span<byte> buffer = stackalloc byte[BufferLength];
 
@@ -33,7 +70,7 @@ internal static class SequenceStringGenerator
         buffer[4] = (byte)(ms >> 8);
         buffer[5] = (byte)ms;
 
-        if (salt is null)
+        if (saltKey is null)
         {
             RandomNumberGenerator.Fill(buffer.Slice(6, 5));
         }
@@ -41,22 +78,25 @@ internal static class SequenceStringGenerator
         {
             // 3 bytes of true randomness, last 2 bytes hold the salt signature.
             RandomNumberGenerator.Fill(buffer.Slice(6, PayloadLength - 6));
-            ComputeSignature(salt, buffer.Slice(0, PayloadLength), buffer.Slice(PayloadLength, SignatureLength));
+            ComputeSignature(saltKey, buffer.Slice(0, PayloadLength), buffer.Slice(PayloadLength, SignatureLength));
         }
 
         return EncodeBase32(buffer);
     }
 
-    internal static bool IsValid(string suffix) => IsValid(suffix, salt: null);
+    internal static bool IsValid(string suffix) => TryCanonicalize(suffix, saltKey: null, out _);
 
-    internal static bool IsValid(string suffix, string? salt) => TryCanonicalize(suffix, salt, out _);
+    internal static bool IsValid(string suffix, string? salt) => TryCanonicalize(suffix, GetSaltKey(salt), out _);
+
+    internal static bool TryCanonicalize(string suffix, string? salt, out string canonical) =>
+        TryCanonicalize(suffix, GetSaltKey(salt), out canonical);
 
     /// <summary>
     /// Validates <paramref name="suffix"/> and returns its canonical spelling: lowercase, with the
     /// two unused trailing bits of the last character cleared. Several spellings decode to the same
     /// bytes, so callers should store <paramref name="canonical"/> rather than the input.
     /// </summary>
-    internal static bool TryCanonicalize(string suffix, string? salt, out string canonical)
+    internal static bool TryCanonicalize(string suffix, byte[]? saltKey, out string canonical)
     {
         canonical = string.Empty;
 
@@ -66,12 +106,12 @@ internal static class SequenceStringGenerator
         }
 
         Span<byte> decoded = stackalloc byte[BufferLength];
-        if (!TryDecodeBase32(suffix, decoded))
+        if (!TryDecodeBase32(suffix.AsSpan(), decoded))
         {
             return false;
         }
 
-        if (!HasValidSignature(decoded, salt))
+        if (!HasValidSignature(decoded, saltKey))
         {
             return false;
         }
@@ -81,15 +121,15 @@ internal static class SequenceStringGenerator
         return true;
     }
 
-    private static bool HasValidSignature(ReadOnlySpan<byte> decoded, string? salt)
+    private static bool HasValidSignature(ReadOnlySpan<byte> decoded, byte[]? saltKey)
     {
-        if (salt is null)
+        if (saltKey is null)
         {
             return true;
         }
 
         Span<byte> expected = stackalloc byte[SignatureLength];
-        ComputeSignature(salt, decoded.Slice(0, PayloadLength), expected);
+        ComputeSignature(saltKey, decoded.Slice(0, PayloadLength), expected);
 
         for (var i = 0; i < SignatureLength; i++)
         {
@@ -102,20 +142,20 @@ internal static class SequenceStringGenerator
         return true;
     }
 
-    private static void ComputeSignature(string salt, ReadOnlySpan<byte> payload, Span<byte> destination)
+    private static void ComputeSignature(byte[] key, ReadOnlySpan<byte> payload, Span<byte> destination)
     {
-        var key = Encoding.UTF8.GetBytes(salt);
 #if NET7_0_OR_GREATER
         Span<byte> hash = stackalloc byte[32];
         HMACSHA256.HashData(key, payload, hash);
 #else
         using var hmac = new HMACSHA256(key);
-        var hash = hmac.ComputeHash(payload.ToArray());
-#endif
-        for (var i = 0; i < destination.Length; i++)
+        Span<byte> hash = stackalloc byte[32];
+        if (!hmac.TryComputeHash(payload, hash, out _))
         {
-            destination[i] = hash[i];
+            throw new CryptographicException("HMACSHA256 failed to compute the signature.");
         }
+#endif
+        hash.Slice(0, destination.Length).CopyTo(destination);
     }
 
     private static string EncodeBase32(ReadOnlySpan<byte> data)
@@ -147,7 +187,7 @@ internal static class SequenceStringGenerator
         return new string(result);
     }
 
-    private static bool TryDecodeBase32(string suffix, Span<byte> destination)
+    private static bool TryDecodeBase32(ReadOnlySpan<char> suffix, Span<byte> destination)
     {
         if (suffix.Length != EncodedLength || destination.Length != BufferLength)
         {
@@ -160,8 +200,7 @@ internal static class SequenceStringGenerator
 
         foreach (var c in suffix)
         {
-            var lower = c is >= 'A' and <= 'Z' ? (char)(c + 32) : c;
-            var idx = Alphabet.IndexOf(lower);
+            var idx = c < DecodeTable.Length ? DecodeTable[c] : -1;
             if (idx < 0)
             {
                 return false;
