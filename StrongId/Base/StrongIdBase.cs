@@ -17,39 +17,41 @@ namespace StrongId.Base;
 /// </typeparam>
 public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  where T : IStrongId, IStrongIdFactory<T>
 {
-    public static string Prefix
-    {
-        get
-        {
-            var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+    // Static fields initialise in textual order. The attribute, the factory and the empty
+    // value must stay above _generatedSalt, which materialises an instance through them.
 
-            return prefixAttribute is null ? throw new MissingFieldException("Prefix attribute is missing") : prefixAttribute.Prefix;
-        }
-    }
-    
-    internal static IdScheme ResolvedIdScheme
-    {
-        get
-        {
-            var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+    /// <summary>
+    /// The <see cref="StrongIdPrefixAttribute"/> on <typeparamref name="T"/>, looked up once per
+    /// closed type instead of on every <c>Create</c>/<c>FromString</c>/<c>Prefix</c> call.
+    /// Global defaults are still read live (see <see cref="ResolvedIdScheme"/>), so
+    /// <see cref="StrongIdDefaults.Configure"/> keeps working after the first id is created.
+    /// </summary>
+    private static readonly StrongIdPrefixAttribute? _prefixAttribute =
+        (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
 
-            return prefixAttribute is null || prefixAttribute.IdScheme is IdScheme.Default
-                ? StrongIdDefaults.Options.IdScheme
-                : prefixAttribute.IdScheme;
-        }
-    }
+#if !NET7_0_OR_GREATER
+    /// <summary>
+    /// The convention-based <c>NewInstance(string)</c> factory, bound once as a delegate.
+    /// <c>null</c> when the type doesn't declare one; <see cref="NewInstance"/> then throws.
+    /// </summary>
+    private static readonly Func<string, T>? _factory = CreateFactory();
+#endif
 
-    internal static StorageFormat ResolvedStorageFormat
-    {
-        get
-        {
-            var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+    private static readonly string _emptyValue =
+        _prefixAttribute is null ? "_empty" : $"{_prefixAttribute.Prefix}_empty";
 
-            return prefixAttribute is null || prefixAttribute.StorageFormat is StorageFormat.Default
-                ? StrongIdDefaults.Options.StorageFormat
-                : prefixAttribute.StorageFormat;
-        }
-    }
+    public static string Prefix =>
+        _prefixAttribute?.Prefix ?? throw new MissingFieldException("Prefix attribute is missing");
+
+    internal static IdScheme ResolvedIdScheme =>
+        _prefixAttribute is null || _prefixAttribute.DeclaredIdScheme is IdScheme.Default
+            ? StrongIdDefaults.Options.IdScheme
+            : _prefixAttribute.DeclaredIdScheme;
+
+    internal static StorageFormat ResolvedStorageFormat =>
+        _prefixAttribute is null || _prefixAttribute.DeclaredStorageFormat is StorageFormat.Default
+            ? StrongIdDefaults.Options.StorageFormat
+            : _prefixAttribute.DeclaredStorageFormat;
 
     /// <summary>
     /// Per-type salt populated by the source generator when the <c>[StrongIdPrefix]</c>
@@ -59,36 +61,31 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     /// </summary>
     protected string? Salt { get; init; }
 
-    private static readonly string? _generatedSalt = ReadSaltFromTemplate();
-    private static readonly string? _defaultSalt = LoadDefaultSalt();
+    // HMAC key bytes for the salt, encoded once per type rather than on every Create/parse.
+    private static readonly byte[]? _generatedSaltKey = SequenceStringGenerator.GetSaltKey(ReadSaltFromTemplate());
+    private static readonly byte[]? _defaultSaltKey = SequenceStringGenerator.GetSaltKey(
+        _prefixAttribute is null ? null : _prefixAttribute.Prefix + typeof(T).Name);
 
     private static string? ReadSaltFromTemplate()
     {
         // Materialise one throwaway instance via the source-generated factory so the
         // protected Salt populated in its object initializer becomes observable here.
-        // This replaces the previous reflection-based field lookup.
         return Empty is StrongIdBase<T> typed ? typed.Salt : null;
     }
 
-    private static string? LoadDefaultSalt()
-    {
-        var attr = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
-        return attr is null ? null : attr.Prefix + typeof(T).Name;
-    }
-
     /// <summary>
-    /// Resolves the active salt for this id type. Per-type opt-in (a non-null
+    /// Resolves the active salt key for this id type. Per-type opt-in (a non-null
     /// <c>salt</c> on the attribute) wins; otherwise the global
     /// <see cref="StrongIdOptions.UseSalt"/> falls back to <c>prefix + ClassName</c>.
     /// </summary>
-    private static string? ResolveSalt()
+    private static byte[]? ResolveSaltKey()
     {
-        if (_generatedSalt is not null)
+        if (_generatedSaltKey is not null)
         {
-            return _generatedSalt;
+            return _generatedSaltKey;
         }
 
-        return StrongIdDefaults.Options.UseSalt ? _defaultSalt : null;
+        return StrongIdDefaults.Options.UseSalt ? _defaultSaltKey : null;
     }
 
     protected StrongIdBase() { }
@@ -98,6 +95,15 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
 #if NET7_0_OR_GREATER
         return T.NewInstance(value);
 #else
+        return _factory is null
+            ? throw new MissingMethodException(typeof(T).FullName, "NewInstance")
+            : _factory(value);
+#endif
+    }
+
+#if !NET7_0_OR_GREATER
+    private static Func<string, T>? CreateFactory()
+    {
         var method = typeof(T).GetMethod(
             "NewInstance",
             BindingFlags.Public | BindingFlags.Static,
@@ -107,12 +113,18 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
 
         if (method is null)
         {
-            throw new MissingMethodException(typeof(T).FullName, "NewInstance");
+            return null;
         }
 
-        return (T)method.Invoke(null, new object[] { value })!;
-#endif
+        if (method.ReturnType == typeof(T))
+        {
+            return (Func<string, T>)method.CreateDelegate(typeof(Func<string, T>));
+        }
+
+        // Hand-written factory with a different (but castable) return type: keep the old reflective call.
+        return value => (T)method.Invoke(null, new object[] { value })!;
     }
+#endif
 
     private static Guid CreateUuid7()
     {
@@ -123,10 +135,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
 #endif
     }
 
-    public static T Empty => NewInstance(
-        (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute)) is null
-            ? "_empty"
-            : $"{((StrongIdPrefixAttribute?) Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute)))!.Prefix}_empty");
+    public static T Empty => NewInstance(_emptyValue);
 
     /// <summary>
     /// Creates a new instance of the StrongIdBase using a prefix and a generated UUID.
@@ -137,26 +146,21 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     /// </exception>
     public static T Create()
     {
-        var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+        var prefix = Prefix;
+        var scheme = ResolvedIdScheme;
 
-        if(prefixAttribute is null)
+        var value = scheme switch
         {
-            throw new MissingFieldException("Prefix attribute is missing");
-        }
-
-
-        var value = ResolvedIdScheme switch
-        {
-            IdScheme.Uuid7 => $"{CreateUuid7():N}",
-            IdScheme.Uuid4 => $"{Guid.NewGuid():N}",
+            IdScheme.Uuid7 => CreateUuid7().ToString("N"),
+            IdScheme.Uuid4 => Guid.NewGuid().ToString("N"),
             IdScheme.Int => throw new NotSupportedException("Int scheme is not supported for automatic generation"),
-            IdScheme.SequenceString => SequenceStringGenerator.Create(ResolveSalt()),
-            _ => throw new NotSupportedException($"IdScheme '{ResolvedIdScheme}' is not supported.")
+            IdScheme.SequenceString => SequenceStringGenerator.Create(ResolveSaltKey()),
+            _ => throw new NotSupportedException($"IdScheme '{scheme}' is not supported.")
         };
 
-        return NewInstance($"{prefixAttribute.Prefix}_{value}");
+        return NewInstance(string.Concat(prefix, "_", value));
     }
-    
+
     /// <summary>
     /// Creates a new <see cref="IdScheme.SequenceString"/> id using <paramref name="timestamp"/>
     /// for the time-sortable prefix instead of <see cref="DateTimeOffset.UtcNow"/>. Use this
@@ -167,20 +171,16 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     /// <exception cref="NotSupportedException">Thrown when the resolved id scheme is not <see cref="IdScheme.SequenceString"/>.</exception>
     internal static T Create(DateTimeOffset timestamp)
     {
-        var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
+        var prefix = Prefix;
+        var scheme = ResolvedIdScheme;
 
-        if (prefixAttribute is null)
+        if (scheme is not IdScheme.SequenceString)
         {
-            throw new MissingFieldException("Prefix attribute is missing");
+            throw new NotSupportedException($"Create(DateTimeOffset) is only supported for IdScheme.SequenceString — '{typeof(T).Name}' resolves to '{scheme}'.");
         }
 
-        if (ResolvedIdScheme is not IdScheme.SequenceString)
-        {
-            throw new NotSupportedException($"Create(DateTimeOffset) is only supported for IdScheme.SequenceString — '{typeof(T).Name}' resolves to '{ResolvedIdScheme}'.");
-        }
-
-        var value = SequenceStringGenerator.Create(timestamp, ResolveSalt());
-        return NewInstance($"{prefixAttribute.Prefix}_{value}");
+        var value = SequenceStringGenerator.Create(timestamp, ResolveSaltKey());
+        return NewInstance(string.Concat(prefix, "_", value));
     }
 
     /// <summary>
@@ -204,14 +204,12 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
             throw new ArgumentNullException(nameof(value));
         }
 
-        var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
-
-        if(prefixAttribute is null)
+        if (_prefixAttribute is null)
         {
             throw new MissingFieldException($"Prefix attribute is missing for {typeof(T).Name}");
         }
 
-        return TryParseCore(value, prefixAttribute.Prefix, out var result) switch
+        return TryParseCore(value, _prefixAttribute.Prefix, out var result) switch
         {
             ParseFailure.None => result,
             ParseFailure.Prefix => throw new InvalidCastException(
@@ -261,12 +259,13 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
         // The suffix never contains '_', so the prefix is everything before the last '_'.
         // This keeps prefixes that themselves contain '_' working, and rejects values with
         // extra segments ("user_<guid>_junk") or another type's longer prefix ("user_admin_<guid>").
-        if (!string.Equals(ExtractPrefix(value), prefix, StringComparison.Ordinal))
+        var separator = value.LastIndexOf('_');
+        if (!PrefixSpan(value, separator).SequenceEqual(prefix.AsSpan()))
         {
             return ParseFailure.Prefix;
         }
 
-        var suffix = ExtractSuffix(value);
+        var suffix = separator < 0 ? string.Empty : value.Substring(separator + 1);
 
         if (suffix.Length == 0)
         {
@@ -295,7 +294,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
                 break;
 
             case IdScheme.SequenceString:
-                if (!SequenceStringGenerator.TryCanonicalize(suffix, ResolveSalt(), out canonicalSuffix))
+                if (!SequenceStringGenerator.TryCanonicalize(suffix, ResolveSaltKey(), out canonicalSuffix))
                 {
                     return ParseFailure.Suffix;
                 }
@@ -308,7 +307,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
 
         result = NewInstance(string.Equals(suffix, canonicalSuffix, StringComparison.Ordinal)
             ? value
-            : $"{prefix}_{canonicalSuffix}");
+            : string.Concat(prefix, "_", canonicalSuffix));
         return ParseFailure.None;
     }
 
@@ -330,15 +329,13 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     /// <returns><c>true</c> when <paramref name="value"/> is a valid id for <typeparamref name="T"/>.</returns>
     public static bool TryParse(string value, out T result)
     {
-        var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(typeof(T), typeof(StrongIdPrefixAttribute));
-
-        if (value is null || prefixAttribute is null)
+        if (value is null || _prefixAttribute is null)
         {
             result = default!;
             return false;
         }
 
-        return TryParseCore(value, prefixAttribute.Prefix, out result) is ParseFailure.None;
+        return TryParseCore(value, _prefixAttribute.Prefix, out result) is ParseFailure.None;
     }
 
     /// <summary>
@@ -348,7 +345,7 @@ public class StrongIdBase<T> : StrongId, IValidatableObject, IEquatable<T>  wher
     /// <returns>A collection of <see cref="ValidationResult"/> indicating validation errors, if any.</returns>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (Value is null || ExtractPrefix(Value) != Prefix)
+        if (Value is null || !PrefixSpan(Value, Value.LastIndexOf('_')).SequenceEqual(Prefix.AsSpan()))
         {
             yield return new ValidationResult("Prefix is invalid", [nameof(Value)]);
         }
@@ -413,7 +410,22 @@ public class StrongId : TypeConverter, IStrongId
     
     public string Value { get; init; } = null!;
     
-    internal Guid Uuid => Guid.ParseExact(ExtractSuffix(Value), "N");
+    internal Guid Uuid
+    {
+        get
+        {
+            var separator = Value.LastIndexOf('_');
+            var suffix = separator < 0 ? ReadOnlySpan<char>.Empty : Value.AsSpan(separator + 1);
+            return Guid.ParseExact(suffix, "N".AsSpan());
+        }
+    }
+
+    /// <summary>
+    /// Allocation-free <see cref="ExtractPrefix"/>: the text before the last <c>'_'</c>
+    /// (at <paramref name="separator"/>), or the whole value when there is none.
+    /// </summary>
+    internal static ReadOnlySpan<char> PrefixSpan(string value, int separator) =>
+        separator < 0 ? value.AsSpan() : value.AsSpan(0, separator);
 
     /// <summary>
     /// Returns everything before the last <c>'_'</c> (the whole value when there is none).
