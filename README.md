@@ -22,8 +22,8 @@ cust_03179215585947b89d823dd774160225       ← Uuid4
 
 | Project | Purpose |
 | --- | --- |
-| `StrongId` | Core types and the source generator. Multi-targeted: `net8.0`, `net9.0`, `net10.0` and `netstandard2.1` for the library; `netstandard2.0` for the analyzer. |
-| `StrongId.EntityFramework` | EF Core `ValueConverter`s and `PropertyBuilder` extensions. Multi-targeted `net7.0`, `net8.0`, `net9.0`, `net10.0` — the EF Core major lines up with the runtime. |
+| `StrongId` | Core types and the source generator. Multi-targeted: `net8.0`, `net9.0`, `net10.0`, `net11.0` and `netstandard2.1` for the library; `netstandard2.0` for the analyzer. |
+| `StrongId.EntityFramework` | EF Core `ValueConverter`s and `PropertyBuilder` extensions. Multi-targeted `net7.0`, `net8.0`, `net9.0`, `net10.0`, `net11.0` — the EF Core major lines up with the runtime. |
 | `StrongId.Tests` | xUnit unit tests for the core. |
 | `StrongId.EntityFramework.Tests` | xUnit integration tests against an in-memory SQLite database. |
 | `Demo` | Console project demonstrating every id scheme and storage format end-to-end. |
