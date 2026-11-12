@@ -345,38 +345,21 @@ public class StrongId : TypeConverter, IStrongId
     
     internal Guid Uuid => Guid.ParseExact(Value.Split("_")[1], "N");
     
-    private StrongId(string value) : this()
-    {
-        Value = value;
-    }
-    
     protected StrongId()
     {
     }
     
     
-    public static IStrongId Convert(string v)
-    {
-        IStrongId key = default!;
-        var prefix = v.Split("_")[0];
-        var domainKeyInterfaces = typeof(IStrongId);
-        var types = AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(s => s.GetTypes()).ToList()
-            .Where(p => domainKeyInterfaces.IsAssignableFrom(p) && p != domainKeyInterfaces).ToList();
-                
-        foreach (var type in types)
-        {
-            var prefixAttribute = (StrongIdPrefixAttribute?)Attribute.GetCustomAttribute(type, typeof(StrongIdPrefixAttribute));
-            
-            if(prefixAttribute?.Prefix == prefix)
-            {
-                var instance =  new StrongId(v);
-                key = (IStrongId)System.Convert.ChangeType(instance, type);
-            }
-        }
-
-        return key;
-    }
+    /// <summary>
+    /// Parses a prefixed id string into the concrete id type whose
+    /// <see cref="StrongIdPrefixAttribute"/> matches the prefix, applying the same
+    /// validation as that type's <c>FromString</c>. The prefix → type map is built once
+    /// and cached; assemblies loaded later are picked up on the next unknown prefix.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="v"/> is null.</exception>
+    /// <exception cref="InvalidCastException">No id type declares the prefix, or the suffix is invalid for it.</exception>
+    /// <exception cref="InvalidOperationException">More than one id type declares the prefix.</exception>
+    public static IStrongId Convert(string v) => StrongIdRegistry.Parse(v);
 
     public TypeCode GetTypeCode()
     {
